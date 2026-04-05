@@ -1,0 +1,33 @@
+# Only include these files in npm package
+# dist/ is included via files array in package.json
+dist/
+
+# But exclude these even if in files array
+*.tsbuildinfo
+.env
+.env.local
+.vscode/
+.idea/
+*.log
+npm-debug.log*
+coverage/
+.nyc_output/
+
+# Tests - exclude from npm package
+tests/
+*.test.ts
+*.test.js
+jest.config.js
+
+# Dev configs - not needed in production
+.eslintrc.js
+.prettierrc
+tsconfig.json
+
+# Git
+.git/
+.gitignore
+
+# Development history files
+*.session.json
+luxyie-export-*
