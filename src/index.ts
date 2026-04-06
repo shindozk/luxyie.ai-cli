@@ -4,8 +4,10 @@ import { setupCLI, startChat } from './cli/index.js';
 import { colors } from './ui/components.js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
 
 export async function main(): Promise<void> {
+// ... (omitted for brevity, will provide full function)
   try {
     // Initialize config first
     await configManager.init();
@@ -31,8 +33,19 @@ export async function main(): Promise<void> {
 const currentFilePath = fileURLToPath(import.meta.url);
 const executedFilePath = process.argv[1] ? path.resolve(process.argv[1]) : '';
 
+// Resolve real paths to handle symlinks (npm global bin)
+const realCurrentPath = fs.existsSync(currentFilePath) ? fs.realpathSync(currentFilePath) : currentFilePath;
+const realExecutedPath = executedFilePath && fs.existsSync(executedFilePath) ? fs.realpathSync(executedFilePath) : executedFilePath;
+
 // Check if being run directly (not imported as a module)
-if (executedFilePath && (currentFilePath === executedFilePath || executedFilePath.endsWith('index.js'))) {
+const isDirectRun = realExecutedPath && (
+  realCurrentPath === realExecutedPath || 
+  realExecutedPath.endsWith('index.js') ||
+  path.basename(realExecutedPath) === 'luxyie' ||
+  path.basename(realExecutedPath) === 'luxyie-ai'
+);
+
+if (isDirectRun) {
   main().catch((err) => {
     console.error(err);
     process.exit(1);

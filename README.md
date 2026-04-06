@@ -1,234 +1,153 @@
+# Luxyie AI CLI
+
+> **An intelligent, terminal-first AI assistant powered by NVIDIA and OpenAI.**
+
+Luxyie CLI brings the power of advanced AI models directly into your terminal — whether you're coding, researching, writing, or automating tasks. Think of it as your personal AI pair programmer, researcher, and assistant — always ready, always fast.
+
 <div align="center">
-  <img src="https://i.imgur.com/02t4tnq.png" alt="Luxyie AI CLI Logo"/>
-  <h1>Luxyie AI CLI</h1>
+  <img src="https://i.imgur.com/02t4tnq.png" alt="Luxyie AI CLI"/>
 </div>
-
-An intelligent, robust, and cross-platform CLI for interacting with advanced AI models (powered by NVIDIA Builds). Inspired by Gemini CLI, but with more tools, session management, and multiplatform support (Linux, macOS, Windows, Android/Termux).
-
----
-**Unlimited:**
-- No API key required (works out of the box)
-- No token or usage limits
-- Unlimited usage for all users
 
 ---
 
 ## 🚀 Installation
 
-### Global Installation (Recommended)
-
-Install via npm to use `luxyie` command from any directory:
+Install globally with npm:
 
 ```bash
-# Install globally
 npm install -g luxyie.ai-cli
+```
 
-# Now you can run from any directory:
+After installation, Luxyie CLI automatically configures your system to make the `luxyie` command available globally in your terminal. This includes:
+
+- **Windows**: Adds the npm global bin directory (`%APPDATA%\npm`) to your system PATH via the Windows Registry.
+- **macOS/Linux**: Adds the path to your shell profile (`~/.bashrc`, `~/.zshrc`, or `~/.profile`) if not already present.
+
+> 💡 **No manual setup required.** The post-install script handles everything automatically.
+
+Once installed, run:
+
+```bash
 luxyie
-luxyie chat
-luxyie ask "Hello AI"
 ```
 
-### Using npx (No Installation)
+> If the command is not recognized after installation, restart your terminal or run:
+> - **Windows**: `$env:PATH = "$(npm config get prefix)\;$env:PATH"`
+> - **macOS/Linux**: `source ~/.bashrc` or `source ~/.zshrc`
 
-Run without installing:
+---
 
+## 🔧 Features
+
+### ✨ Unlimited & Free
+- **🆓 100% Free** — No subscription required
+- **🚀 Unlimited Usage** — No token limits, use as much as you need
+- **🔑 No API Key Required** — Works out of the box with pre-configured access
+- **♾️ Unlimited Models** — Access all supported AI models without restrictions
+
+### ✅ Core Capabilities
+- **Natural Language Coding**: Write, explain, and debug code with AI.
+- **Web Search & Research**: Fetch real-time results from Google and academic sources.
+- **File Analysis**: Read, summarize, and extract insights from PDFs, codebases, and documents.
+- **Multimodal Input**: Analyze screenshots and images via `luxyie image` (requires GPU).
+- **Terminal Automation**: Execute shell commands safely with context-aware validation.
+- **Persistent Context**: Save conversations and resume them later with `luxyie checkpoint`.
+
+### 🛠️ Built-in Tools
+
+| Tool | Description |
+|------|-------------|
+| `/chat` | Start a conversational AI session |
+| `/code` | Generate or refactor code |
+| `/search` | Google-powered web search |
+| `/read` | Analyze local files (PDF, TXT, JS, etc.) |
+| `/image` | Analyze screenshots or images |
+| `/shell` | Execute safe shell commands |
+| `/config` | View or edit your settings |
+
+---
+
+## 💬 Quick Examples
+
+### Start a chat
 ```bash
-npx luxyie.ai-cli
+luxyie > Explain quantum computing in simple terms
 ```
 
-### Development / Local Installation
+### Generate code from a prompt
+```bash
+luxyie > Write a Node.js script that downloads a webpage and saves it as HTML
+```
 
-For development or testing locally:
+### Analyze a file
+```bash
+luxyie > Summarize this file: ./src/core/agent.ts
+```
+
+### Take a screenshot and ask about it
+```bash
+luxyie image screenshot.png > What does this UI show?
+```
+
+### Run a shell command safely
+```bash
+luxyie > List all files in /home and show only .js files
+```
+
+---
+
+## 📁 Configuration
+
+Luxyie stores settings in `~/.luxyie/`:
 
 ```bash
-# Clone the repository
+~/.luxyie/
+├── config.json # API keys, model preferences
+├── history.json # Conversation history
+├── checkpoints/ # Saved sessions
+└── cache/ # Cached web results and images
+```
+
+To edit config:
+```bash
+luxyie config
+```
+
+---
+
+## 🛡️ Security
+- **No data is sent to third parties** unless you provide an API key.
+- All shell commands are **sandboxed** and require explicit confirmation.
+- Images and files are processed **locally** when possible.
+- You can disable telemetry in `config.json`.
+
+---
+
+## 📦 For Developers
+
+### Build from Source
+```bash
 git clone https://github.com/shindozk/luxyie.ai-cli.git
 cd luxyie.ai-cli
-
-# Install dependencies
 npm install
-
-# Build the project
 npm run build
-
-# Link for global use (creates symlink)
 npm link
-
-# Now luxyie command is available globally
-luxyie --version
-
-# To unlink when done:
-npm unlink -g luxyie.ai-cli
 ```
 
-**Requirements:**  
-- Node.js >= 22 (Linux, macOS, Windows, Android/Termux)
-- For clipboard support:  
-  - Linux: `xclip` or `xsel`  
-  - macOS: `pbcopy`  
-  - Android/Termux: `pkg install xclip`  
-- For image display: Terminal must support iTerm2/Kitty/compatible (optional)
+Then run `luxyie` from anywhere.
 
----
-
-## 💬 Usage
-
-### Start Interactive Chat
-
-```bash
-luxyie
-# or
-luxyie chat
-```
-
-- `--session <id>`: Resume a previous session
-- `--no-history`: Disable history for this session
-
-### Quick Question
-
-```bash
-luxyie ask "What is the capital of France?"
-```
-
-### Manage Settings
-
-```bash
-luxyie config show      # View current config
-luxyie config set       # Update config interactively
-luxyie config reset     # Reset config to defaults
-```
-
-### Conversation History
-
-```bash
-luxyie history list           # List all sessions
-luxyie history show <id>      # Show a session
-luxyie history delete <id>    # Delete a session
-luxyie history clear          # Delete all sessions
-```
-
----
-
-## 🛠️ Chat Commands (in chat mode)
-
-- `/quit` or `/exit` — Exit chat
-- `/clear` — Clear current session history
-- `/copy` — Copy last AI response to clipboard
-- `/history` — Show current session ID
-- `/help` — Show all commands
-- `/model list` — List available models
-- `/model select <id>` — Change model
-
----
-
-## ⚙️ Configuration
-
-Config is stored at `~/.luxyie/config.json`:
-
-```json
-{
-  "model": "qwen/qwen3-next-80b-a3b-instruct",
-  "maxTokens": 4096,
-  "temperature": 0.6,
-  "topP": 0.95,
-  "enableThinking": true,
-  "systemPrompt": "...",
-  "historyEnabled": true,
-  "streamEnabled": true
-}
-```
-
----
-
-## 🧑‍💻 Advanced Usage
-
-### Run Shell Commands
-
-```bash
-luxyie chat
-# In chat: /tool run_command { "command": "npm run build && npm test" }
-```
-
-### List Files Recursively
-
-```bash
-luxyie chat
-# In chat: /tool list_directory { "path": ".", "maxDepth": 2 }
-```
-
-### Create and Read Files
-
-```bash
-luxyie chat
-# In chat: /tool write_file { "path": "src/test.txt", "content": "hello world" }
-# In chat: /tool read_file { "path": "src/test.txt" }
-```
-
----
-
-## 🖥️ Platform Support
-
-- **Linux:** Full support (clipboard, images, shell, etc.)
-- **macOS:** Full support (clipboard, images, shell, etc.)
-- **Windows:** Full support (PowerShell fallback for shell commands)
-- **Android (Termux):** Supported, but clipboard and image display may require extra packages.
-
-**Clipboard not working?**  
-- Linux: `sudo apt install xclip` or `xsel`
-- macOS: Should work out of the box
-- Android/Termux: `pkg install xclip`
-
-**Image display not working?**  
-- Only supported in iTerm2, Kitty, or compatible terminals. Otherwise, a warning will be shown.
-
----
-
-## 🛡️ Troubleshooting
-
-### Command not found after global install
-
-If `luxyie` command is not found after `npm install -g`:
-
-**Check npm global bin directory:**
-```bash
-npm config get prefix
-```
-
-**Add to PATH (if needed):**
-- **Linux/macOS:** Add to `~/.bashrc`, `~/.zshrc`, or `~/.profile`:
-  ```bash
-  export PATH="$PATH:$(npm config get prefix)/bin"
-  ```
-- **Windows:** Add `%APPDATA%\npm` to your system PATH environment variable
-
-**Verify installation:**
-```bash
-npm list -g luxyie.ai-cli
-which luxyie    # Linux/macOS
-where luxyie    # Windows
-```
-
-### Other issues
-
-- If the terminal freezes after pressing Esc, use Ctrl+C to force exit.
-- If a command hangs, press Esc to interrupt.
-- Use `maxDepth` and `timeoutMs` in `list_directory` to avoid infinite loops.
-- All errors and tool logs are shown in the terminal for transparency.
+### Contributing
+We welcome contributions! Check out our [Contributing Guide](CONTRIBUTING.md).
 
 ---
 
 ## ☕ Support
-
 If you like this project, consider supporting via [Ko-fi](https://ko-fi.com/shindozk).
 
 ---
 
-## 📄 License
+## 📜 License
+MIT © [ShindoZk](https://github.com/shindozk)
 
-© MIT
-
-<div align="center">
-<h4>Developed by ShindoZK</h4>
-<h3>Made with ❤️ in Brazil</h3>
-</div>
+---
+> 💡 **Pro Tip**: Press `Ctrl + C` twice to exit gracefully. Use `/help` anytime for a list of commands.

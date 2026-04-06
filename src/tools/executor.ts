@@ -154,7 +154,6 @@ export class ToolExecutor {
     try {
       switch (name) {
         case 'list_directory': {
-          console.log(`[ToolExecutor] Iniciando list_directory em: ${args.path}, maxDepth=${args.maxDepth}, timeoutMs=${args.timeoutMs}`);
           // Robust directory listing: recursion, maxDepth, symlink/loop protection, validation, timeout
           const targetPath = path.resolve(this.cwd, args.path || '.');
           const maxDepth = Number.isInteger(args.maxDepth) && args.maxDepth > 0 ? args.maxDepth : 1;
@@ -222,7 +221,6 @@ export class ToolExecutor {
           ]).catch(e => result.push({ path: targetPath, error: e.message }));
 
           toolResult = JSON.stringify(result, null, 2);
-          console.log(`[ToolExecutor] list_directory finalizado (${result.length} itens, ${Date.now() - start}ms)`);
           return toolResult;
         }
         case 'read_file': {
@@ -253,7 +251,6 @@ export class ToolExecutor {
           }
           const content = await fs.readFile(readPath, 'utf-8');
           toolResult = content;
-          console.log(`[ToolExecutor] read_file: ${args.path} (size: ${content.length})`);
           return toolResult;
         }
         case 'write_file': {
@@ -261,13 +258,10 @@ export class ToolExecutor {
           await fs.ensureDir(path.dirname(writePath));
           await fs.writeFile(writePath, args.content);
           toolResult = `Successfully written to ${args.path}`;
-          console.log(`[ToolExecutor] write_file: ${toolResult}`);
           return toolResult;
         }
         case 'run_command': {
-          console.log(`[ToolExecutor] run_command: ${args.command}`);
           toolResult = await this.performRunCommand(args.command);
-          console.log(`[ToolExecutor] run_command finalizado (${Date.now() - start}ms)`);
           return toolResult;
         }
         case 'web_search':
@@ -282,7 +276,6 @@ export class ToolExecutor {
           return `Unknown tool: ${name}`;
       }
     } catch (error: any) {
-      console.error(`[ToolExecutor] Erro ao executar ${name}: ${error.message}`);
       return `Error executing tool ${name}: ${error.message}`;
     }
   }

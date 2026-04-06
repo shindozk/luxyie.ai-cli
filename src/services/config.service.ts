@@ -7,7 +7,7 @@ const CONFIG_DIR = path.join(os.homedir(), '.luxyie');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 const DEFAULT_CONFIG: Config = {
-  version: '1.0.0',
+  version: '1.3.5',
   apiKey: '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',
   apiUrl: 'https://integrate.api.nvidia.com/v1',
   model: 'qwen/qwen3-next-80b-a3b-instruct',

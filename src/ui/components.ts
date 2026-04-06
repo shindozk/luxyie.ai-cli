@@ -6,9 +6,10 @@ import fs from 'fs-extra';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Get __dirname equivalent for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Get current directory - works in both ESM and CJS
+const _dirname = typeof __dirname !== 'undefined' 
+  ? __dirname 
+  : path.dirname(fileURLToPath(import.meta.url));
 
 // Type declaration for cfonts
 declare module 'cfonts' {
@@ -215,8 +216,8 @@ export async function printHeaderWithLogo(version: string): Promise<void> {
   try {
     // Try multiple possible paths for the logo (development vs installed)
     const possiblePaths = [
-      path.join(__dirname, '..', '..', '..', 'assets', 'Luxyie_AI-Logo.png'), // Installed: dist/ui/components.js -> ../../../assets/
-      path.join(__dirname, '..', '..', 'assets', 'Luxyie_AI-Logo.png'),       // Dev: src/ui/components.ts -> ../../assets/
+      path.join(_dirname, '..', '..', '..', 'assets', 'Luxyie_AI-Logo.png'), // Installed: dist/ui/components.js -> ../../../assets/
+      path.join(_dirname, '..', '..', 'assets', 'Luxyie_AI-Logo.png'),       // Dev: src/ui/components.ts -> ../../assets/
       path.join(process.cwd(), 'assets', 'Luxyie_AI-Logo.png'),                // Fallback to cwd
     ];
     

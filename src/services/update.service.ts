@@ -2,9 +2,6 @@ import updateNotifier from 'update-notifier';
 import { execSync } from 'child_process';
 import chalk from 'chalk';
 import boxen from 'boxen';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
 
 /**
  * Update Service
@@ -12,19 +9,13 @@ const require = createRequire(import.meta.url);
  * Similar to Gemini CLI's auto-update functionality
  */
 export class UpdateService {
-  private packageName: string = 'luxyie.ai-cli';
+  private packageName: string;
   private currentVersion: string;
   private updateCheckInterval: number = 1000 * 60 * 60; // 1 hour (in ms)
 
   constructor() {
-    // Read version from package.json
-    try {
-      const pkg = require('../../package.json');
-      this.currentVersion = pkg.version;
-      this.packageName = pkg.name;
-    } catch {
-      this.currentVersion = '1.0.0';
-    }
+    this.currentVersion = process.env.APP_VERSION || '1.0.0';
+    this.packageName = process.env.APP_NAME || 'luxyie.ai-cli';
   }
 
   /**
