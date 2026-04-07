@@ -1,6 +1,6 @@
 {
   "name": "luxyie.ai-cli",
-  "version": "1.6.5",
+  "version": "1.7.0",
   "description": "Luxyie AI CLI - An intelligent and advanced CLI powered by NVIDIA Builds.",
   "main": "dist/index.js",
   "type": "module",
@@ -58,7 +58,8 @@
     "util": "^0.12.5"
   },
   "optionalDependencies": {
-    "puppeteer": "^24.40.0"
+    "puppeteer": "^24.40.0",
+    "llamaindex": "^0.12.1"
   },
   "devDependencies": {
     "@types/figlet": "^1.5.8",

@@ -32,11 +32,11 @@ const terminalRenderer = new TerminalRenderer({
   blockquote: chalk.gray.italic,
   table: chalk.hex('#8B5CF6'),
 
-  // Rendering options
+  // Rendering options - MUST be false to prevent garbled/duplicated text on Android/Termux
   codeSyntaxHighlighting: false,
   tab: 2,
-  reflowText: false, // Disabled to prevent table duplication/wrapping issues
-  width: Math.min(process.stdout.columns || 120, 140), // Increased width for better table handling
+  reflowText: false, // CRITICAL: false prevents text garbling on all platforms
+  width: 120, // Fixed width to avoid terminal detection issues
   firstHeading: chalk.bold.hex('#A78BFA'),
 });
 
@@ -71,12 +71,10 @@ export function renderMarkdown(content: string): string {
     // Strip background colors that conflict with terminal
     const cleaned = stripBackgroundColors(rendered);
 
+    // Remove any trailing whitespace/newlines
     return cleaned.trim();
   } catch (error) {
-    // Log error for debugging but return clean content
-    if (process.env.DEBUG) {
-      console.error('Markdown render error:', error);
-    }
+    // Return original content if rendering fails
     return content;
   }
 }
@@ -85,11 +83,11 @@ export function renderMarkdown(content: string): string {
  * Strip ANSI background color codes to prevent visual conflicts
  */
 function stripBackgroundColors(text: string): string {
+  // Remove background color codes only (40-49, 100-107)
   return text.replace(/\x1b\[[0-9;]*m/g, (match) => {
     const codes = match.slice(2, -1).split(';');
     const filtered = codes.filter(code => {
       const num = parseInt(code, 10);
-      // Remove background color codes (40-49, 100-107)
       return !(num >= 40 && num <= 49) && !(num >= 100 && num <= 107);
     });
     return filtered.length ? `\x1b[${filtered.join(';')}m` : '';
