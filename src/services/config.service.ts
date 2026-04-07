@@ -27,7 +27,7 @@ const NVIDIA_BUILDS_PUBLIC_API_KEY = 'nvapi-KsgaLBJiQ_VFjiAA0uPW-BoNm7tWI74LhA6f
 
 /** Default configuration values */
 const DEFAULT_CONFIG: Config = {
-  version: '1.6.0',
+  version: '1.6.5',
   
   // API Configuration - Using NVIDIA Builds public access key
   apiKey: NVIDIA_BUILDS_PUBLIC_API_KEY,

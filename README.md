@@ -463,5 +463,5 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 <div align="center">
   <h3>Developed with ❤️ by ShindoZk</h3>
   <h3>Made in Brazil 🇧🇷</h3>
-  <p><strong>Version 1.6.0</strong> · <strong>40 Tests Passing</strong> · <strong>8 AI Models</strong> · <strong>100% Free</strong></p>
+  <p><strong>Version 1.6.5</strong> · <strong>40 Tests Passing</strong> · <strong>8 AI Models</strong> · <strong>100% Free</strong></p>
 </div>
