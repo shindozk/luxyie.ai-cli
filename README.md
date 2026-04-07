@@ -10,7 +10,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-1.6.0-8B5CF6?style=for-the-badge)](https://github.com/shindozk/luxyie.ai-cli/releases)
+[![Version](https://img.shields.io/badge/version-1.7.5-8B5CF6?style=for-the-badge)](https://github.com/shindozk/luxyie.ai-cli/releases)
 [![Node](https://img.shields.io/badge/node-20%2B-10B981?style=for-the-badge&logo=node.js)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-6366F1?style=for-the-badge)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-40%20passing-10B981?style=for-the-badge)](https://github.com/shindozk/luxyie.ai-cli/actions)
@@ -66,6 +66,7 @@ luxyie chat
 |----------|---------|
 | **Windows** | `$env:PATH = "$(npm config get prefix)\;$env:PATH"` |
 | **macOS/Linux** | `source ~/.bashrc` or `source ~/.zshrc` |
+| **Android (Termux)** | `pkg install nodejs-lts chromium && npm install -g luxyie.ai-cli` |
 
 ---
 
@@ -139,7 +140,7 @@ termux-setup-storage
 | File operations | ✅ Full | Use `termux-setup-storage` |
 | Command execution | ✅ Full | Termux-compatible commands |
 | Web search/fetch | ⚠️ Requires Chromium | `pkg install chromium` |
-| Image analysis | ✅ Full | Via NVIDIA Vision API |
+| Image analysis | ✅ Full | Via Kimi-k2.5 |
 
 See [docs/TERMUX-GUIDE.md](docs/TERMUX-GUIDE.md) for complete documentation.
 
@@ -148,10 +149,13 @@ See [docs/TERMUX-GUIDE.md](docs/TERMUX-GUIDE.md) for complete documentation.
 ## 🔧 Features
 
 ### ✨ Unlimited & Free
-- **100% Free**: No subscription required
-- **Unlimited Usage**: No token limits
-- **No API Key Required**: Works out of the box
-- **8 AI Models**: Access all supported NVIDIA models including Mistral, Llama, Gemma, Qwen, DeepSeek, and more
+- **100% Free Forever**: No subscription, no credit card, no hidden costs
+- **Unlimited Usage**: No daily limits, no restrictions, use as much as you need
+- **No API Key Required**: Works out of the box with public NVIDIA Builds access
+- **9 AI Models**: Access all supported models including Qwen 3.5, Mistral, Llama, Gemma, GLM, DeepSeek, GPT-OSS, and StepFun
+- **Token Restoration**: Simply close and reopen the CLI to reset your token count — start fresh anytime!
+
+> 💡 **Tip**: If you reach the token limit for a model, just close the CLI (`/quit`) and reopen it (`luxyie chat`) to restore all tokens. Your conversation history is saved automatically!
 
 ### 🤖 AI Agent Tools (8 Tools)
 
@@ -164,19 +168,22 @@ See [docs/TERMUX-GUIDE.md](docs/TERMUX-GUIDE.md) for complete documentation.
 | `web_search` | Search via DuckDuckGo |
 | `web_fetch` | Extract content from URLs |
 | `web_viewer` | Browser automation |
-| `read_image` | Analyze images (Vision API) |
+| `read_image` | Analyze images (Kimi-k2.5) |
 
-> 🔒 **Security First**: Every tool requires explicit user approval.
+> 🔒 **Security First**: Every tool requires explicit user approval with "Allow once / Always allow / Deny" options.
 
 ### ✅ Core Capabilities
 - 💬 **Natural Language Coding** — Write, debug, and explain code
 - 🔍 **Web Search & Research** — Real-time results from DuckDuckGo
 - 📄 **File Analysis** — Read and summarize any file type
-- 🖼️ **Multimodal Input** — Analyze images via NVIDIA Vision
+- 🖼️ **Multimodal Input** — Analyze images via NVIDIA Vision API
 - ⚡ **Terminal Automation** — Safe command execution
 - 💾 **Persistent Context** — Save and resume conversations
 - 🌐 **Multi-Language** — Auto-detects and responds in your language
 - 🧠 **Reasoning Mode** — Extended thinking for complex problems
+- 📊 **Token Usage Tracking** — Visual progress bars and warnings
+- 🔧 **Git Integration** — Status, log, diff, and AI-assisted commits
+- 🔄 **Auto-Update** — Checks for updates on startup and every 5 minutes
 
 ---
 
@@ -191,32 +198,62 @@ Inside a chat session, use these commands:
 | `/copy` `/cp` | Copy last AI response |
 | `/help` `/?` | Show all available commands |
 | `/model select` | Open interactive model selection menu |
-| `/model <id>` | Switch to a specific model directly |
-| `/models` | List all available models with interactive menu |
+| `/models` | List all available models with details |
 | `/settings` `/cfg` | Show current settings |
-| `/stats` `/usage` | Show session statistics |
+| `/stats` `/usage` | Show session statistics with token usage |
 | `/session <id>` | Switch to a saved session |
+| `/share` | Export conversation as markdown |
 | `/tools` | List available AI tools |
 | `/reset` | Reset conversation with system prompt |
+| `/about` | Show version and build info |
+| `/theme` | Cycle through visual themes |
+| `/init` | Analyze project and generate context file |
+| `/git <sub>` | Git integration (status, log, diff, commit) |
 
-### Model Selection Menu
+### Model Commands
 
-Type `/model select` or `/models` to open an interactive menu where you can browse and select from all available AI models:
+| Command | Description |
+|---------|-------------|
+| `/models` | **Lists all 9 models** with provider, temperature, max tokens, and reasoning support |
+| `/model select` | Opens **interactive menu** to switch models |
 
-- ✅ Visual indicator of current model
-- ✅ Temperature and capabilities shown
-- ✅ Reasoning support tags
-- ✅ Cancel option to exit without changing
+**Example `/models` output:**
+```
+🤖 Available Models
+──────────────────────────────────────────────────────────────────────
+
+  ● qwen/qwen3.5-397b-a17b [thinking] [axios]
+    temp: 0.6 | max_tokens: 16384 | top_p: 0.95
+
+  ○ mistralai/mistral-small-4-119b-2603 [thinking] [axios]
+    temp: 0.1 | max_tokens: 16384 | top_p: 1.0
+  ...
+
+Use /model select to switch models interactively
+```
+
+### Git Commands
+
+| Command | Description |
+|---------|-------------|
+| `/git status` | Show current git status |
+| `/git log [n]` | Show recent commits (default 10) |
+| `/git diff` | Show unstaged changes |
+| `/git branch` | List branches |
+| `/git add [files]` | Stage files (default: all) |
+| `/git commit <msg>` | Create commit with message |
+| `/git ai-commit` | Generate AI commit message and commit |
 
 ---
 
 ## 🤖 Available Models
 
-Luxyie supports **8 advanced AI models** via NVIDIA Builds:
+Luxyie supports **9 advanced AI models** via NVIDIA Builds:
 
 | Model | Provider | Temp | Max Tokens | Reasoning |
 |-------|----------|------|------------|-----------|
-| `mistralai/mistral-small-4-119b-2603` | axios | 0.1 | 16384 | ✅ High |
+| `qwen/qwen3.5-397b-a17b` | axios | 0.6 | 16384 | ✅ |
+| `mistralai/mistral-small-4-119b-2603` | axios | 0.1 | 16384 | ✅ |
 | `meta/llama-3.3-70b-instruct` | openai | 0.2 | 1024 | ❌ |
 | `google/gemma-4-31b-it` | axios | 1.0 | 16384 | ✅ |
 | `z-ai/glm5` | openai | 1.0 | 16384 | ✅ |
@@ -225,7 +262,31 @@ Luxyie supports **8 advanced AI models** via NVIDIA Builds:
 | `openai/gpt-oss-120b` | openai | 1.0 | 4096 | ✅ |
 | `stepfun-ai/step-3.5-flash` | openai | 1.0 | 16384 | ✅ |
 
-> 💡 **Tip**: Models marked with ✅ support extended reasoning for complex problem-solving.
+> 💡 **Tip**: Models marked with ✅ support extended reasoning for complex problem-solving. Use `/models` to see full details including provider and parameters.
+
+---
+
+## 📊 Token Management
+
+Luxyie CLI tracks token usage automatically and provides:
+
+- **Visual progress bars** showing current usage vs. model limit
+- **Warnings at 80% usage** so you can plan accordingly
+- **Interactive options** when limit is reached:
+  - 💾 Save session and restart
+  - 🔄 Switch to another model
+  - 🚪 Exit the CLI
+- **Easy Token Restoration**: Close and reopen the CLI to reset your token count — your history is saved automatically!
+
+**Example `/stats` output:**
+```
+📊 Session Statistics
+──────────────────────────────────────────────────
+  Duration: 5m 30s
+  Tokens: ████████████████░░░░ 12,450 / 16,384 tokens (76%)
+  Model: qwen/qwen3.5-397b-a17b
+──────────────────────────────────────────────────
+```
 
 ---
 
@@ -242,7 +303,6 @@ luxyie ask "What is TypeScript?"
 luxyie config show           # View settings
 luxyie config set            # Edit interactively
 luxyie config reset          # Reset to defaults
-luxyie config model          # Model information
 
 # Manage history
 luxyie history list          # List all sessions
@@ -256,9 +316,6 @@ luxyie history clear         # Clear all sessions
 luxyie update check          # Check for updates
 luxyie update install        # Install latest version
 luxyie update status         # Show version info
-
-# List models
-luxyie models                # List all available models
 
 # Help
 luxyie --help                # Show help
@@ -290,26 +347,27 @@ luxyie ask "Summarize this file: ./src/core/agent.ts"
 luxyie ask "Describe this image: ./screenshot.png"
 ```
 
-### Run commands safely
+### Git integration
 ```bash
 luxyie chat
-> List all files and show only .js files
+/git status
+/git ai-commit
 ```
 
 ### Switch models
 ```bash
-# Interactive menu
-/model select
+# List all models
+/models
 
-# Direct switch
-/model mistralai/mistral-small-4-119b-2603
+# Open interactive selection
+/model select
 ```
 
 ---
 
 ## 🔒 Security
 
-- 🔐 **Tool Approval**: Every tool execution requires user consent
+- 🔐 **Tool Approval**: Every tool execution requires user consent (Allow once / Always allow / Deny)
 - 🛡️ **Sandboxed Commands**: Commands run in current directory only
 - 🔍 **Symlink Protection**: Directory traversal is blocked
 - ⚡ **Timeout Protection**: Operations have configurable timeouts
@@ -347,30 +405,30 @@ npm link
 src/
 ├── cli/                  # CLI setup (Commander.js)
 ├── commands/             # Command handlers
-│   ├── chat.command.ts   # Chat loop (12+ internal commands)
+│   ├── chat.command.ts   # Main chat loop
 │   ├── ask.command.ts    # Quick questions
 │   ├── config.command.ts # Configuration management
 │   ├── history.command.ts# Session management
+│   ├── model.command.ts  # Model listing & selection
+│   ├── token-limit.command.ts # Token management
 │   └── ...
 ├── services/             # Business logic
 │   ├── config.service.ts # Configuration manager
 │   ├── llm.service.ts    # API client (OpenAI + Axios)
 │   ├── history.service.ts# Session persistence
-│   └── models.ts         # 8 available models
+│   ├── update.service.ts # Auto-update checker
+│   └── models.ts         # 9 available models
 ├── tools/                # Agent tools
 │   └── executor.ts       # 8 tool implementations
 ├── ui/                   # Terminal UI
 │   ├── components.ts     # Visual components
-│   ├── renderer.ts       # Markdown rendering (marked + marked-terminal)
-│   ├── terminal.ts       # Input handling
-│   └── spinner.ts        # Loading indicators
-├── utils/                # Modular utility functions
-│   ├── abort-handler.ts  # ESC/Ctrl+C handling
+│   ├── renderer.ts       # Markdown rendering
+│   └── terminal.ts       # Input handling
+├── utils/                # Modular utilities
+│   ├── git.ts            # Git operations
 │   ├── paste-detector.ts # Paste detection
 │   ├── session-manager.ts# Session lifecycle
 │   ├── tool-executor.ts  # Tool execution flow
-│   ├── stream-processor.ts# Stream accumulation
-│   ├── terminal-input.ts # Terminal input handling
 │   └── message-formatter.ts# Message formatting
 ├── prompts/              # System prompts
 │   └── system-prompt.ts  # Agent identity & rules
@@ -462,6 +520,6 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 <div align="center">
   <h3>Developed with ❤️ by ShindoZk</h3>
-  <h3>Made in Brazil 🇧🇷</h3>
-  <p><strong>Version 1.7.0</strong> · <strong>40 Tests Passing</strong> · <strong>8 AI Models</strong> · <strong>100% Free</strong></p>
+  <h3>Made in Brazil 🇧</h3>
+  <p><strong>Version 1.7.5</strong> · <strong>40 Tests Passing</strong> · <strong>9 AI Models</strong> · <strong>100% Free Forever</strong></p>
 </div>

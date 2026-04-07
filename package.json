@@ -1,6 +1,6 @@
 {
   "name": "luxyie.ai-cli",
-  "version": "1.7.0",
+  "version": "1.7.5",
   "description": "Luxyie AI CLI - An intelligent and advanced CLI powered by NVIDIA Builds.",
   "main": "dist/index.js",
   "type": "module",
@@ -15,9 +15,9 @@
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
     "build:bundle": "node scripts/build-bundle.cjs",
-    "prepare": "npm run build 2>/dev/null || echo 'Build skipped (Termux compatible)'",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run build && npm run build:bundle",
-    "postinstall": "node scripts/postinstall.cjs 2>/dev/null || true"
+    "postinstall": "node scripts/postinstall.cjs"
   },
   "keywords": [
     "ai",

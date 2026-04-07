@@ -11,7 +11,14 @@ export class TerminalUI {
   private rl: readline.Interface;
 
   constructor() {
-    this.rl = readline.createInterface({
+    this.rl = this.createInterface();
+  }
+
+  /**
+   * Create a fresh readline interface
+   */
+  private createInterface(): readline.Interface {
+    return readline.createInterface({
       input: process.stdin,
       output: process.stdout,
       terminal: true,
@@ -19,8 +26,54 @@ export class TerminalUI {
   }
 
   /**
+   * Restore stdin and recreate readline interface
+   * Call this after inquirer prompts to fix input blocking
+   */
+  restore(): void {
+    // Close old interface
+    try {
+      this.rl.close();
+    } catch {
+      // Ignore errors if already closed
+    }
+
+    // Resume stdin if paused
+    if (process.stdin.isPaused()) {
+      process.stdin.resume();
+    }
+
+    // Ensure stdin is not in raw mode (inquirer might leave it in raw mode)
+    if (process.stdin.isTTY && process.stdin.isRaw) {
+      try {
+        process.stdin.setRawMode(false);
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    process.stdin.setEncoding('utf8');
+
+    // Recreate interface with fresh state
+    this.rl = this.createInterface();
+
+    // Ensure stdin is ready
+    if (process.stdin.isPaused()) {
+      process.stdin.resume();
+    }
+  }
+
+  /**
+   * Restore stdin asynchronously with delay to ensure readiness
+   * Use this after inquirer prompts
+   */
+  async restoreAsync(): Promise<void> {
+    this.restore();
+    // Small delay to ensure stdin is fully ready
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  /**
    * Ask user for input with a prompt
-   * Simple and reliable using rl.question
    */
   async ask(prompt: string): Promise<string> {
     return new Promise((resolve) => {

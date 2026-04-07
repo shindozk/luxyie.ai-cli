@@ -60,8 +60,11 @@ async function getHistoryManager(): Promise<HistoryManager> {
 // ============================================================================
 
 async function startChat(options: any): Promise<void> {
+  // Check for updates on startup
+  await updateService.checkOnStartup();
+
   await printBanner();
-  
+
   const config = configManager.get();
   const historyManager = await getHistoryManager();
   const apiClient = new APIClient(config.apiKey, config.apiUrl, config.model);
@@ -85,11 +88,17 @@ async function startChat(options: any): Promise<void> {
     ? [...session.messages]
     : [{ role: 'system' as const, content: config.systemPrompt }];
 
+  // Start periodic update checker (every 5 minutes)
+  const updateCheckInterval = setInterval(async () => {
+    await updateService.checkPeriodically();
+  }, 1000 * 60 * 5); // 5 minutes
+
   const keepAlive = setInterval(() => {}, 1000);
 
   try {
     await chat.runChatLoop(messages, sessionId, options);
   } finally {
+    clearInterval(updateCheckInterval);
     clearInterval(keepAlive);
   }
 }
@@ -112,7 +121,7 @@ export function setupCLI(): Command {
     });
 
   // Check for updates on startup (non-blocking)
-  updateService.checkForUpdates().catch(() => {});
+  updateService.checkOnStartup().catch(() => {});
 
   // ========================================================================
   // COMMAND: chat

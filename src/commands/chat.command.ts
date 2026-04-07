@@ -3,37 +3,50 @@
  * Refactored with modular utilities for robust, clean code
  */
 
-import chalk from 'chalk';
 import inquirer from 'inquirer';
+import { configManager } from '../services/config.service.js';
 import { ToolExecutor } from '../tools/executor.js';
 import { TerminalUI } from '../ui/terminal.js';
 import { ChatMessage } from '../types/index.js';
 import {
-  // Session management
   createSessionTimer,
   estimateTokens,
   getSessionSummary,
-  // Tool execution
-  parseToolArgs,
   executeToolCall,
   formatToolMessage,
   type ToolCall,
-  // Message formatting
   formatUserMessage,
   formatAIMessage,
   formatSystemMessage,
   formatErrorMessage,
   formatSeparator,
-  formatToolStatus,
   formatReasoning,
-  // Components
   colors,
   createInputPrompt,
   createStatusBar,
   createWelcomeMessage,
   createSessionInfoDisplay,
+  isGitRepo,
+  getGitStatus,
+  getGitLog,
+  getGitBranches,
+  getGitDiff,
+  gitAdd,
+  gitCommit,
+  generateCommitMessage,
+  formatGitStatus,
+  formatGitLog,
 } from '../utils/index.js';
-import { AVAILABLE_MODELS, getModelConfig } from '../services/models.js';
+import { listAllModels, showModelSelectionMenu, switchModel, getCurrentModelMaxTokens } from './model.command.js';
+import {
+  isTokenLimitApproaching,
+  isTokenLimitExceeded,
+  getTokenLimitInfo,
+  showTokenLimitWarning,
+  showTokenLimitError,
+  handleTokenLimitReached,
+  formatTokenUsage,
+} from './token-limit.command.js';
 
 // ============================================================================
 // CHAT COMMAND CLASS
@@ -72,11 +85,8 @@ export class ChatCommand {
 
     while (true) {
       const input = await this.ui.ask(createInputPrompt());
-
-      // Trim and handle input
       const trimmed = input.trim();
 
-      // Skip empty input
       if (!trimmed) continue;
 
       // Handle exit commands anywhere
@@ -91,16 +101,40 @@ export class ChatCommand {
         continue;
       }
 
-      // Add user message to history and display it
+      // Add user message to history
       messages.push({ role: 'user', content: trimmed });
       this.ui.log(formatUserMessage(trimmed) + '\n');
+
+      // Check token limit
+      const maxTokens = getCurrentModelMaxTokens(this.config.model);
+      if (isTokenLimitExceeded(this.tokenCount, maxTokens)) {
+        const info = getTokenLimitInfo(this.config.model, maxTokens, this.tokenCount);
+        this.ui.log(showTokenLimitError(info));
+
+        const action = await handleTokenLimitReached(info, this.historyManager, sessionId);
+        if (action === 'exit') break;
+        if (action === 'switch-model') {
+          await showModelSelectionMenu({
+            config: this.config,
+            apiClient: this.apiClient,
+            ui: this.ui,
+          });
+          this.tokenCount = 0;
+        }
+        continue;
+      }
+
+      // Show warning if approaching limit
+      if (isTokenLimitApproaching(this.tokenCount, maxTokens, 0.8)) {
+        const info = getTokenLimitInfo(this.config.model, maxTokens, this.tokenCount);
+        this.ui.log(showTokenLimitWarning(info) + '\n');
+      }
 
       // Process AI response
       try {
         await this.processAIResponse(messages, sessionId);
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        // Ignore abort errors silently
         if (err instanceof Error && err.name !== 'AbortError') {
           this.ui.log(formatErrorMessage(errorMessage));
         }
@@ -112,27 +146,19 @@ export class ChatCommand {
   }
 
   // ============================================================================
-  // SESSION DISPLAY - Minimalist Style
+  // SESSION DISPLAY
   // ============================================================================
 
   private displaySessionInfo(sessionId: string): void {
     const startTime = this.sessionTimer.startTime.toLocaleTimeString();
 
-    // Status bar (no box)
-    this.ui.log(createStatusBar({
-      workspace: process.cwd(),
-    }));
-
-    // Welcome message (compact, no box)
+    this.ui.log(createStatusBar({ workspace: process.cwd() }));
     this.ui.log(createWelcomeMessage());
-
-    // Session info (minimalist, no box)
     this.ui.log(createSessionInfoDisplay({
       id: sessionId,
       model: this.config.model,
       startTime,
     }));
-
     this.ui.log('\n');
   }
 
@@ -170,59 +196,73 @@ export class ChatCommand {
       case 'quit':
       case 'exit':
         return true;
-
       case 'clear':
       case 'cls':
         messages.length = 0;
         messages.push({ role: 'system', content: this.config.systemPrompt });
         this.ui.log(formatSystemMessage('Conversation history cleared'));
         break;
-
       case 'help':
       case '?':
         this.displayHelp();
         break;
-
       case 'copy':
       case 'cp':
         this.copyLastResponse();
         break;
-
       case 'model':
-        await this.handleModelCommand(args);
+        if (args.trim() === 'select') {
+          await showModelSelectionMenu({
+            config: this.config,
+            apiClient: this.apiClient,
+            ui: this.ui,
+          });
+          // Restore stdin after inquirer prompt steals it
+          await this.ui.restoreAsync();
+        } else {
+          this.ui.log(formatSystemMessage('Usage: /model select (opens interactive menu)'));
+        }
         break;
-
       case 'models':
-        await this.listModelsMenu();
+        await listAllModels({
+          config: this.config,
+          apiClient: this.apiClient,
+          ui: this.ui,
+        });
         break;
-
       case 'settings':
       case 'config':
       case 'cfg':
         await this.showSettings();
         break;
-
       case 'stats':
       case 'usage':
         this.showStats();
         break;
-
       case 'session':
         await this.handleSessionCommand(args, sessionId);
         break;
-
       case 'share':
         this.shareConversation();
         break;
-
       case 'tools':
         this.listTools();
         break;
-
       case 'reset':
         await this.resetConversation(messages);
         break;
-
+      case 'about':
+        this.showAbout();
+        break;
+      case 'theme':
+        await this.cycleTheme();
+        break;
+      case 'init':
+        await this.initProjectContext();
+        break;
+      case 'git':
+        await this.handleGitCommand(args);
+        break;
       default:
         this.ui.log(formatSystemMessage(`Unknown command: /${command}. Type /help for available commands`));
     }
@@ -237,14 +277,17 @@ export class ChatCommand {
       { cmd: '/copy, /cp', desc: 'Copy last AI response' },
       { cmd: '/help, /?', desc: 'Show this help message' },
       { cmd: '/model select', desc: 'Open interactive model selection menu' },
-      { cmd: '/model <id>', desc: 'Switch to a specific model directly' },
-      { cmd: '/models', desc: 'List all available models with selection menu' },
+      { cmd: '/models', desc: 'List all available models with details' },
       { cmd: '/settings, /cfg', desc: 'Show current settings' },
       { cmd: '/stats, /usage', desc: 'Show session statistics' },
       { cmd: '/session <id>', desc: 'Switch to a session' },
       { cmd: '/share', desc: 'Export conversation as markdown' },
       { cmd: '/tools', desc: 'List available AI tools' },
       { cmd: '/reset', desc: 'Reset conversation with system prompt' },
+      { cmd: '/about', desc: 'Show version and build info' },
+      { cmd: '/theme', desc: 'Cycle through visual themes' },
+      { cmd: '/init', desc: 'Analyze project and generate context file' },
+      { cmd: '/git <sub>', desc: 'Git integration (status, log, diff, commit)' },
     ];
 
     this.ui.log(`\n${colors.bold('📚 Available Commands')}\n`);
@@ -272,108 +315,146 @@ export class ChatCommand {
     }
   }
 
-  // ============================================================================
-  // MODEL COMMANDS - Interactive Menu
-  // ============================================================================
-
-  private async handleModelCommand(args: string): Promise<void> {
-    if (!args) {
-      // If no argument, show interactive menu
-      await this.listModelsMenu();
-      return;
-    }
-
-    // Direct model switch: /model select <id>
-    const parts = args.split(' ');
-    if (parts[0] === 'select' && parts[1]) {
-      await this.switchModel(parts[1]);
-      return;
-    }
-
-    // Try direct switch with model ID
-    await this.switchModel(args.trim());
-  }
-
-  private async switchModel(modelId: string): Promise<void> {
-    const modelConfig = AVAILABLE_MODELS.find((m) => m.id === modelId);
-
-    if (!modelConfig) {
-      this.ui.log(formatErrorMessage(`Model not found: ${modelId}`));
-      this.ui.log(formatSystemMessage('Use /models to see available models'));
-      return;
-    }
-
-    this.config.model = modelId;
-    this.apiClient.setModel(modelId);
-
-    this.ui.log(formatSystemMessage(`✓ Model switched to: ${colors.secondary(modelId)}`));
-    this.ui.log(formatSystemMessage(`Temperature: ${modelConfig.temperature} | Max tokens: ${modelConfig.max_tokens}`));
-  }
-
-  private async listModelsMenu(): Promise<void> {
-    this.ui.log(`\n${colors.bold('🤖 Available Models')}\n`);
-    this.ui.log(`${formatSeparator(60)}\n`);
-
-    const choices: { name: string; value: string | null }[] = AVAILABLE_MODELS.map((model) => {
-      const isCurrent = model.id === this.config.model;
-      const reasoning = model.supportsReasoning ? colors.info(' [thinking]') : '';
-      const marker = isCurrent ? colors.green('●') : colors.dim('○');
-
-      return {
-        name: `${marker} ${isCurrent ? colors.bold(model.id) : model.id}${reasoning} ${colors.dim(`(temp: ${model.temperature})`)}`,
-        value: model.id,
-      };
-    });
-
-    choices.push(new (inquirer as any).Separator('─'.repeat(50)));
-    choices.push({ name: '❌ Cancel', value: null });
-
-    const { selected } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'selected',
-        message: 'Select a model:',
-        choices,
-        pageSize: 15,
-      },
-    ]);
-
-    if (selected) {
-      await this.switchModel(selected);
-    } else {
-      this.ui.log(formatSystemMessage('Model selection cancelled'));
-    }
-  }
-
   private async showSettings(): Promise<void> {
-    const config = this.config;
+    let exitSettings = false;
 
-    this.ui.log(`\n${colors.bold('⚙️  Current Settings')}\n`);
-    this.ui.log(`${formatSeparator()}\n`);
-    this.ui.log(`  ${colors.dim('Model:')} ${colors.secondary(config.model)}\n`);
-    this.ui.log(`  ${colors.dim('Max Tokens:')} ${colors.white(config.maxTokens)}\n`);
-    this.ui.log(`  ${colors.dim('Temperature:')} ${colors.white(config.temperature)}\n`);
-    this.ui.log(`  ${colors.dim('Top P:')} ${colors.white(config.topP)}\n`);
-    this.ui.log(`  ${colors.dim('Thinking:')} ${config.enableThinking ? colors.green('Enabled') : colors.dim('Disabled')}\n`);
-    this.ui.log(`  ${colors.dim('History:')} ${config.historyEnabled ? colors.green('Enabled') : colors.dim('Disabled')}\n`);
-    this.ui.log(`  ${colors.dim('Streaming:')} ${config.streamEnabled ? colors.green('Enabled') : colors.dim('Disabled')}\n`);
-    this.ui.log(`${formatSeparator()}\n`);
+    while (!exitSettings) {
+      const config = this.config;
+
+      // Display current settings in header
+      this.ui.log(`\n${colors.bold('⚙️  CLI Settings')}\n`);
+      this.ui.log(`${formatSeparator()}\n`);
+      this.ui.log(`  ${colors.dim('Model:')} ${colors.secondary(config.model)}\n`);
+      this.ui.log(`  ${colors.dim('Max Tokens:')} ${colors.white(config.maxTokens)}\n`);
+      this.ui.log(`  ${colors.dim('Temperature:')} ${colors.white(config.temperature)}\n`);
+      this.ui.log(`  ${colors.dim('Top P:')} ${colors.white(config.topP)}\n`);
+      this.ui.log(`  ${colors.dim('Thinking:')} ${config.enableThinking ? colors.green('Enabled') : colors.dim('Disabled')}\n`);
+      this.ui.log(`  ${colors.dim('History:')} ${config.historyEnabled ? colors.green('Enabled') : colors.dim('Disabled')}\n`);
+      this.ui.log(`  ${colors.dim('Streaming:')} ${config.streamEnabled ? colors.green('Enabled') : colors.dim('Disabled')}\n`);
+      this.ui.log(`${formatSeparator()}\n`);
+
+      const { action } = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'action',
+          message: 'What would you like to change?',
+          choices: [
+            { name: '🤖 Change Model', value: 'model' },
+            { name: '📊 Max Tokens', value: 'maxTokens' },
+            { name: '🌡️  Temperature', value: 'temperature' },
+            { name: '🎯 Top P', value: 'topP' },
+            { name: '🧠 Toggle Thinking Mode', value: 'enableThinking' },
+            { name: '💾 Toggle History', value: 'historyEnabled' },
+            { name: '🔄 Toggle Streaming', value: 'streamEnabled' },
+            new inquirer.Separator(),
+            { name: '✅ Done', value: 'exit' },
+          ],
+        },
+      ]);
+
+      switch (action) {
+        case 'model':
+          await showModelSelectionMenu({
+            config: this.config,
+            apiClient: this.apiClient,
+            ui: this.ui,
+          });
+          await this.ui.restoreAsync();
+          break;
+
+        case 'maxTokens': {
+          const { value } = await inquirer.prompt([
+            {
+              type: 'number',
+              name: 'value',
+              message: 'Enter new Max Tokens:',
+              default: this.config.maxTokens,
+              validate: (v: number) => (v > 0 && v <= 100000 ? true : 'Must be between 1 and 100,000'),
+            },
+          ]);
+          await this.ui.restoreAsync();
+          await configManager.update({ maxTokens: value });
+          this.ui.log(formatSystemMessage(`✓ Max Tokens set to: ${value}`));
+          break;
+        }
+
+        case 'temperature': {
+          const { value } = await inquirer.prompt([
+            {
+              type: 'number',
+              name: 'value',
+              message: 'Enter new Temperature (0-2):',
+              default: this.config.temperature,
+              validate: (v: number) => (v >= 0 && v <= 2 ? true : 'Must be between 0 and 2'),
+            },
+          ]);
+          await this.ui.restoreAsync();
+          await configManager.update({ temperature: value });
+          this.ui.log(formatSystemMessage(`✓ Temperature set to: ${value}`));
+          break;
+        }
+
+        case 'topP': {
+          const { value } = await inquirer.prompt([
+            {
+              type: 'number',
+              name: 'value',
+              message: 'Enter new Top P (0-1):',
+              default: this.config.topP,
+              validate: (v: number) => (v >= 0 && v <= 1 ? true : 'Must be between 0 and 1'),
+            },
+          ]);
+          await this.ui.restoreAsync();
+          await configManager.update({ topP: value });
+          this.ui.log(formatSystemMessage(`✓ Top P set to: ${value}`));
+          break;
+        }
+
+        case 'enableThinking': {
+          await configManager.update({ enableThinking: !this.config.enableThinking });
+          this.ui.log(
+            formatSystemMessage(
+              `✓ Thinking mode ${this.config.enableThinking ? 'disabled' : 'enabled'}`
+            )
+          );
+          break;
+        }
+
+        case 'historyEnabled': {
+          await configManager.update({ historyEnabled: !this.config.historyEnabled });
+          this.ui.log(
+            formatSystemMessage(
+              `✓ History ${this.config.historyEnabled ? 'disabled' : 'enabled'}`
+            )
+          );
+          break;
+        }
+
+        case 'streamEnabled': {
+          await configManager.update({ streamEnabled: !this.config.streamEnabled });
+          this.ui.log(
+            formatSystemMessage(
+              `✓ Streaming ${this.config.streamEnabled ? 'disabled' : 'enabled'}`
+            )
+          );
+          break;
+        }
+
+        case 'exit':
+          exitSettings = true;
+          this.ui.log(formatSystemMessage('Settings saved.'));
+          break;
+      }
+    }
   }
 
   private showStats(): void {
-    const info = {
-      id: '',
-      model: this.config.model,
-      startedAt: this.sessionTimer.startTime,
-      duration: this.sessionTimer.elapsed(),
-      tokenEstimate: this.tokenCount,
-      messageCount: 0,
-    };
+    const maxTokens = getCurrentModelMaxTokens(this.config.model);
 
     this.ui.log(`\n${colors.bold('📊 Session Statistics')}\n`);
     this.ui.log(`${formatSeparator()}\n`);
-    this.ui.log(`  ${colors.dim('Duration:')} ${colors.white(info.duration)}\n`);
-    this.ui.log(`  ${colors.dim('Est. Tokens:')} ${colors.white(`~${this.tokenCount}`)}\n`);
+    this.ui.log(`  ${colors.dim('Duration:')} ${colors.white(this.sessionTimer.elapsed())}\n`);
+    this.ui.log(`  ${colors.dim('Tokens:')} ${formatTokenUsage(this.tokenCount, maxTokens)}\n`);
     this.ui.log(`  ${colors.dim('Model:')} ${colors.secondary(this.config.model)}\n`);
     this.ui.log(`${formatSeparator()}\n`);
   }
@@ -386,7 +467,6 @@ export class ChatCommand {
     }
 
     const targetSession = await this.historyManager.loadSession(args.trim());
-
     if (!targetSession) {
       this.ui.log(formatErrorMessage(`Session not found: ${args.trim()}`));
       return;
@@ -469,11 +549,9 @@ export class ChatCommand {
         }
       }
 
-      // Store last response and estimate tokens
       this.lastResponse = assistantContent;
       this.tokenCount += estimateTokens(assistantContent);
 
-      // Handle tool calls
       if (toolCalls.length > 0) {
         const toolResults = await this.handleToolCalls(
           toolCalls,
@@ -483,6 +561,7 @@ export class ChatCommand {
         );
         currentMessages = toolResults.messages;
         needsMoreTools = toolResults.needsMoreTools;
+        this.ui.restore();
       } else if (assistantContent) {
         await this.historyManager.addMessage(sessionId, {
           role: 'assistant',
@@ -502,7 +581,6 @@ export class ChatCommand {
     let toolCalls: any[] = [];
     let hasStartedReasoning = false;
 
-    // Display streaming header
     this.ui.log(formatAIMessage('', true));
 
     const response = await this.apiClient.sendMessage(messages, {
@@ -526,7 +604,6 @@ export class ChatCommand {
       },
     }, true);
 
-    // Get final content and tool calls from response
     fullContent = response?.content || '';
     toolCalls = response?.tool_calls || [];
 
@@ -555,7 +632,6 @@ export class ChatCommand {
     assistantContent: string,
     sessionId: string
   ): Promise<{ messages: ChatMessage[]; needsMoreTools: boolean }> {
-    // Save assistant message with tool calls
     messages.push({
       role: 'assistant',
       content: assistantContent || null,
@@ -563,12 +639,10 @@ export class ChatCommand {
     });
     await this.historyManager.addMessage(sessionId, messages[messages.length - 1]);
 
-    // Limit tool calls per cycle to prevent infinite loops
     const MAX_TOOL_CALLS = 5;
     let callsThisCycle = 0;
 
     for (const toolCall of toolCalls) {
-      // Check if we've exceeded the limit
       if (callsThisCycle >= MAX_TOOL_CALLS) {
         this.ui.log(formatSystemMessage('⚠️ Tool call limit reached for this turn. Please respond to the user.'));
         return { messages, needsMoreTools: false };
@@ -577,41 +651,31 @@ export class ChatCommand {
       const name = toolCall.function.name;
       const args = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
 
-      // 1. Display what the AI is ABOUT to do (like Gemini CLI)
       const intentMessage = this.generateIntentMessage(name, args);
       if (intentMessage) {
         this.ui.log(formatAIMessage(intentMessage) + '\n');
       }
 
-      // 2. Execute the tool with approval
       const result = await executeToolCall(
         toolCall as ToolCall,
         this.toolExecutor,
-        {
-          allowedTools: this.allowedTools,
-        }
+        { allowedTools: this.allowedTools }
       );
 
-      // 3. Display what the AI JUST did (like Gemini CLI)
       const reflectionMessage = this.generateReflectionMessage(name, args, result);
       if (reflectionMessage) {
         this.ui.log(formatAIMessage(reflectionMessage) + '\n');
       }
 
-      // 4. Add tool result to messages
       messages.push(formatToolMessage(result));
       await this.historyManager.addMessage(sessionId, messages[messages.length - 1]);
 
       callsThisCycle++;
     }
 
-    // If we used tools, we need another turn to process results
     return { messages, needsMoreTools: callsThisCycle > 0 };
   }
 
-  /**
-   * Generate an intent message explaining what the AI is about to do
-   */
   private generateIntentMessage(toolName: string, args: any): string | null {
     switch (toolName) {
       case 'read_file':
@@ -635,50 +699,274 @@ export class ChatCommand {
     }
   }
 
-  /**
-   * Generate a reflection message explaining what the AI just did
-   */
   private generateReflectionMessage(toolName: string, args: any, result: any): string | null {
     const success = result.success !== false;
     const prefix = success ? '✓' : '✗';
 
     switch (toolName) {
       case 'read_file':
-        return success
-          ? `${prefix} File \`${args.path}\` read successfully.`
-          : `${prefix} Could not read file \`${args.path}\`.`;
+        return success ? `${prefix} File \`${args.path}\` read successfully.` : `${prefix} Could not read file \`${args.path}\`.`;
       case 'write_file':
-        return success
-          ? `${prefix} File \`${args.path}\` saved successfully.`
-          : `${prefix} Failed to save file \`${args.path}\`.`;
+        return success ? `${prefix} File \`${args.path}\` saved successfully.` : `${prefix} Failed to save file \`${args.path}\`.`;
       case 'list_directory':
-        return success
-          ? `${prefix} Directory \`${args.path || '.'}\` listed successfully.`
-          : `${prefix} Failed to list directory.`;
+        return success ? `${prefix} Directory \`${args.path || '.'}\` listed successfully.` : `${prefix} Failed to list directory.`;
       case 'run_command':
-        return success
-          ? `${prefix} Command executed successfully.`
-          : `${prefix} Command failed.`;
+        return success ? `${prefix} Command executed successfully.` : `${prefix} Command failed.`;
       case 'web_search':
-        return success
-          ? `${prefix} Search completed. Found relevant results.`
-          : `${prefix} Search returned no results.`;
+        return success ? `${prefix} Search completed. Found relevant results.` : `${prefix} Search returned no results.`;
       case 'web_fetch':
-        return success
-          ? `${prefix} URL content fetched successfully.`
-          : `${prefix} Failed to fetch content.`;
+        return success ? `${prefix} URL content fetched successfully.` : `${prefix} Failed to fetch content.`;
       case 'web_viewer':
-        return success
-          ? `${prefix} Navigation completed.`
-          : `${prefix} Navigation failed.`;
+        return success ? `${prefix} Navigation completed.` : `${prefix} Navigation failed.`;
       case 'read_image':
-        return success
-          ? `${prefix} Image analyzed successfully.`
-          : `${prefix} Failed to analyze image.`;
+        return success ? `${prefix} Image analyzed successfully.` : `${prefix} Failed to analyze image.`;
       default:
-        return success
-          ? `${prefix} Tool ${toolName} executed successfully.`
-          : `${prefix} Tool ${toolName} failed.`;
+        return success ? `${prefix} Tool ${toolName} executed successfully.` : `${prefix} Tool ${toolName} failed.`;
     }
+  }
+
+  // ============================================================================
+  // ADDITIONAL COMMANDS
+  // ============================================================================
+
+  private showAbout(): void {
+    this.ui.log(`\n${colors.bold('🤖 Luxyie AI CLI')}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+    this.ui.log(`  ${colors.dim('Version:')} ${colors.secondary('1.7.5')}\n`);
+    this.ui.log(`  ${colors.dim('Node.js:')} ${colors.white(process.version)}\n`);
+    this.ui.log(`  ${colors.dim('Platform:')} ${colors.white(process.platform)} ${colors.white(process.arch)}\n`);
+    this.ui.log(`  ${colors.dim('Repository:')} ${colors.accent.underline('https://github.com/shindozk/luxyie.ai-cli')}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+  }
+
+  private async cycleTheme(): Promise<void> {
+    const themes = ['Purple (default)', 'Blue', 'Green', 'Orange'];
+
+    this.ui.log(`\n${colors.bold('🎨 Visual Themes')}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+
+    for (const theme of themes) {
+      const isCurrent = theme === 'Purple (default)';
+      const marker = isCurrent ? '●' : '○';
+      this.ui.log(`  ${colors.dim(marker)} ${isCurrent ? colors.bold(theme) : theme}\n`);
+    }
+
+    this.ui.log(`${formatSeparator()}\n`);
+    this.ui.log(formatSystemMessage('Theme customization coming in a future update!'));
+  }
+
+  private async initProjectContext(): Promise<void> {
+    this.ui.log(formatSystemMessage('🔍 Analyzing project structure...'));
+
+    try {
+      const fs = await import('fs-extra');
+      const path = await import('node:path');
+
+      const packageJsonPath = path.join(process.cwd(), 'package.json');
+      const hasPackageJson = await fs.pathExists(packageJsonPath);
+      const gitignorePath = path.join(process.cwd(), '.gitignore');
+      const hasGitignore = await fs.pathExists(gitignorePath);
+      const files = await fs.readdir(process.cwd());
+      const dirs = files.filter(f => {
+        try { return fs.statSync(path.join(process.cwd(), f)).isDirectory(); } catch { return false; }
+      });
+
+      this.ui.log(formatSystemMessage(`✓ Project analyzed:`));
+      this.ui.log(`  ${colors.dim('Root:')} ${colors.white(process.cwd())}\n`);
+      this.ui.log(`  ${colors.dim('Directories:')} ${colors.white(dirs.slice(0, 10).join(', '))}${dirs.length > 10 ? '...' : ''}\n`);
+      this.ui.log(`  ${colors.dim('package.json:')} ${hasPackageJson ? colors.green('Yes') : colors.dim('No')}\n`);
+      this.ui.log(`  ${colors.dim('.gitignore:')} ${hasGitignore ? colors.green('Yes') : colors.dim('No')}\n`);
+      this.ui.log(formatSystemMessage('Use /tools to explore files or ask questions about the project.'));
+    } catch (error: any) {
+      this.ui.log(formatErrorMessage(`Failed to analyze project: ${error.message}`));
+    }
+  }
+
+  // ============================================================================
+  // GIT COMMANDS
+  // ============================================================================
+
+  private async handleGitCommand(args: string): Promise<void> {
+    if (!isGitRepo()) {
+      this.ui.log(formatSystemMessage('Not a git repository. Initialize with `git init` first.'));
+      return;
+    }
+
+    const parts = args.trim().split(' ');
+    const subcommand = parts[0]?.toLowerCase();
+    const extraArgs = parts.slice(1).join(' ');
+
+    switch (subcommand) {
+      case 'status':
+      case 'st':
+        await this.gitStatus();
+        break;
+      case 'log':
+        await this.gitLog(extraArgs);
+        break;
+      case 'diff':
+        await this.gitDiff(extraArgs);
+        break;
+      case 'branch':
+      case 'branches':
+        await this.gitBranch();
+        break;
+      case 'add':
+        await this.gitAdd(extraArgs);
+        break;
+      case 'commit':
+        await this.gitCommit(extraArgs);
+        break;
+      case 'ai-commit':
+      case 'aic':
+        await this.gitAICommit();
+        break;
+      case 'help':
+      case '':
+        this.gitHelp();
+        break;
+      default:
+        this.ui.log(formatSystemMessage(`Unknown git subcommand: ${subcommand}. Type /git help for usage.`));
+    }
+  }
+
+  private async gitStatus(): Promise<void> {
+    const status = getGitStatus();
+    if (!status) {
+      this.ui.log(formatSystemMessage('Failed to get git status.'));
+      return;
+    }
+
+    this.ui.log(`\n${colors.bold('📂 Git Status')}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+    this.ui.log(formatGitStatus(status) + '\n');
+    this.ui.log(`${formatSeparator()}\n`);
+  }
+
+  private async gitLog(args: string): Promise<void> {
+    const count = parseInt(args, 10) || 10;
+    const commits = getGitLog(Math.min(count, 50));
+
+    if (commits.length === 0) {
+      this.ui.log(formatSystemMessage('No commits found.'));
+      return;
+    }
+
+    this.ui.log(`\n${colors.bold('📝 Recent Commits')}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+    this.ui.log(formatGitLog(commits) + '\n');
+    this.ui.log(`${formatSeparator()}\n`);
+  }
+
+  private async gitDiff(args: string): Promise<void> {
+    const diff = getGitDiff(1000);
+    if (!diff) {
+      this.ui.log(formatSystemMessage('No changes to show or not a git repo.'));
+      return;
+    }
+    if (!diff.trim()) {
+      this.ui.log(formatSystemMessage('No unstaged changes.'));
+      return;
+    }
+
+    this.ui.log(`\n${colors.bold('📄 Git Diff')}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+    this.ui.log(`${colors.dim(diff)}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+  }
+
+  private async gitBranch(): Promise<void> {
+    const branches = getGitBranches();
+    if (branches.length === 0) {
+      this.ui.log(formatSystemMessage('No branches found.'));
+      return;
+    }
+
+    this.ui.log(`\n${colors.bold('🌿 Branches')}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+
+    for (const branch of branches) {
+      const marker = branch.current ? colors.green('●') : colors.dim('○');
+      const name = branch.current ? colors.bold(branch.name) : branch.name;
+      this.ui.log(`  ${marker} ${name}\n`);
+    }
+
+    this.ui.log(`${formatSeparator()}\n`);
+  }
+
+  private async gitAdd(args: string): Promise<void> {
+    const files = args || '.';
+    const result = gitAdd(files);
+
+    if (result.success) {
+      this.ui.log(formatSystemMessage(`✓ Staged: ${files}`));
+    } else {
+      this.ui.log(formatErrorMessage(`Failed to stage: ${result.output}`));
+    }
+  }
+
+  private async gitCommit(message: string): Promise<void> {
+    if (!message) {
+      this.ui.log(formatSystemMessage('Usage: /git commit <message> or /git ai-commit'));
+      return;
+    }
+
+    const result = gitCommit(message);
+    if (result.success) {
+      this.ui.log(formatSystemMessage(`✓ Committed: ${message}`));
+    } else {
+      this.ui.log(formatErrorMessage(`Failed to commit: ${result.output}`));
+    }
+  }
+
+  private async gitAICommit(): Promise<void> {
+    const status = getGitStatus();
+    if (!status) {
+      this.ui.log(formatSystemMessage('Failed to get git status.'));
+      return;
+    }
+
+    const totalChanges = status.staged.length + status.modified.length + status.untracked.length;
+    if (totalChanges === 0) {
+      this.ui.log(formatSystemMessage('No changes to commit. Stage files first with /git add.'));
+      return;
+    }
+
+    this.ui.log(formatSystemMessage('🤖 Generating AI commit message...'));
+    gitAdd('.');
+
+    const updatedStatus = getGitStatus();
+    if (!updatedStatus) return;
+
+    const commitMessage = await generateCommitMessage(this.apiClient, updatedStatus);
+    this.ui.log(formatSystemMessage(`Suggested commit message: ${colors.bold(commitMessage)}`));
+
+    const result = gitCommit(commitMessage);
+    if (result.success) {
+      this.ui.log(formatSystemMessage(`✓ Committed: ${commitMessage}`));
+    } else {
+      this.ui.log(formatErrorMessage(`Failed to commit: ${result.output}`));
+    }
+  }
+
+  private gitHelp(): void {
+    const commands = [
+      { cmd: '/git status', desc: 'Show current git status' },
+      { cmd: '/git log [n]', desc: 'Show recent commits (default 10)' },
+      { cmd: '/git diff', desc: 'Show unstaged changes' },
+      { cmd: '/git branch', desc: 'List branches' },
+      { cmd: '/git add [files]', desc: 'Stage files (default: all)' },
+      { cmd: '/git commit <msg>', desc: 'Create commit with message' },
+      { cmd: '/git ai-commit', desc: 'Generate AI commit message and commit' },
+    ];
+
+    this.ui.log(`\n${colors.bold('🔧 Git Commands')}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+
+    for (const { cmd, desc } of commands) {
+      this.ui.log(`  ${colors.primary(cmd.padEnd(22))} ${colors.dim(desc)}\n`);
+    }
+
+    this.ui.log(`${formatSeparator()}\n`);
   }
 }

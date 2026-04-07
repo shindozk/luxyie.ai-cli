@@ -10,6 +10,15 @@ export interface ModelConfig {
 
 export const AVAILABLE_MODELS: ModelConfig[] = [
   {
+    id: "qwen/qwen3.5-397b-a17b",
+    provider: "axios",
+    temperature: 0.60,
+    top_p: 0.95,
+    max_tokens: 16384,
+    supportsReasoning: true,
+    chat_template_kwargs: { enable_thinking: true, top_k: 20, presence_penalty: 0, repetition_penalty: 1 }
+  },
+  {
     id: "mistralai/mistral-small-4-119b-2603",
     provider: "axios",
     temperature: 0.1,

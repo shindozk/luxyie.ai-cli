@@ -72,6 +72,27 @@ export {
   type MessageFormatOptions,
 } from './message-formatter.js';
 
+// Git utilities
+export {
+  isGitRepo,
+  getGitBranch,
+  getGitRemote,
+  getGitStatus,
+  getGitDiff,
+  getGitFileDiff,
+  getGitLog,
+  getGitBranches,
+  gitAdd,
+  gitCommit,
+  generateCommitMessage,
+  formatGitStatus,
+  formatGitLog,
+  type GitStatus,
+  type GitFileChange,
+  type GitCommit,
+  type GitBranch,
+} from './git.js';
+
 // Re-export formatReasoning from renderer
 export { formatReasoning } from '../ui/renderer.js';
 
