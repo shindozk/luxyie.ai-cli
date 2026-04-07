@@ -10,6 +10,15 @@ export interface ModelConfig {
 
 export const AVAILABLE_MODELS: ModelConfig[] = [
   {
+    id: "mistralai/mistral-small-4-119b-2603",
+    provider: "axios",
+    temperature: 0.1,
+    top_p: 1.0,
+    max_tokens: 16384,
+    supportsReasoning: true,
+    chat_template_kwargs: { reasoning_effort: "high" }
+  },
+  {
     id: "meta/llama-3.3-70b-instruct",
     provider: "openai",
     temperature: 0.2,

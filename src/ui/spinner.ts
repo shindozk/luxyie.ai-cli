@@ -1,5 +1,5 @@
 import ora, { Ora } from 'ora';
-import { colors } from './theme.js';
+import { colors } from './components.js';
 
 export class Spinner {
   private spinner: Ora | null = null;

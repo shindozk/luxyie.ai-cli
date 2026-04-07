@@ -1,5 +1,9 @@
+/**
+ * Modern CLI Setup - Gemini CLI Style
+ * Clean command registration with new features
+ */
+
 import { Command } from 'commander';
-import chalk from 'chalk';
 import { configManager } from '../services/config.service.js';
 import { APIClient } from '../services/llm.service.js';
 import { HistoryManager } from '../services/history.service.js';
@@ -11,10 +15,15 @@ import { ClearCommand } from '../commands/clear.command.js';
 import { UpdateCommand } from '../commands/update.command.js';
 import { updateService } from '../services/update.service.js';
 import { colors, printHeaderWithLogo } from '../ui/components.js';
+import { ChatMessage } from '../types/index.js';
+
+// ============================================================================
+// BANNER & SETUP
+// ============================================================================
 
 async function printBanner(): Promise<void> {
   const config = configManager.get();
-  await printHeaderWithLogo(config.version || '1.0.0');
+  await printHeaderWithLogo(config.version || '1.6.0');
 }
 
 async function checkSetup(): Promise<boolean> {
@@ -22,28 +31,48 @@ async function checkSetup(): Promise<boolean> {
   return true;
 }
 
-async function getHistoryManager() {
+// ============================================================================
+// GLOBAL SIGNALS
+// ============================================================================
+
+process.on('SIGINT', () => {
+  console.log(`\n\n${colors.dim('👋 Goodbye! Gracefully shutting down...')}`);
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  process.exit(0);
+});
+
+// ============================================================================
+// HISTORY MANAGER
+// ============================================================================
+
+async function getHistoryManager(): Promise<HistoryManager> {
   await configManager.init();
   const historyManager = new HistoryManager(configManager.getHistoryDir());
   await historyManager.init();
   return historyManager;
 }
 
-async function startChat(options: any) {
+// ============================================================================
+// START CHAT
+// ============================================================================
+
+async function startChat(options: any): Promise<void> {
   await printBanner();
-  const { createStatusBar, createWelcomeMessage } = await import('../ui/components.js');
+  
   const config = configManager.get();
   const historyManager = await getHistoryManager();
   const apiClient = new APIClient(config.apiKey, config.apiUrl, config.model);
   const chat = new ChatCommand(apiClient, historyManager, config);
 
-  // Sessão: carrega ou cria
   let sessionId = options.session;
   let session;
+
   if (sessionId) {
     session = await historyManager.loadSession(sessionId);
     if (!session) {
-      // Se não existe, cria nova
       sessionId = await historyManager.createSession(config.systemPrompt);
       session = await historyManager.loadSession(sessionId);
     }
@@ -52,18 +81,10 @@ async function startChat(options: any) {
     session = await historyManager.loadSession(sessionId);
   }
 
-  // Exibe barra de status
-  const workspace = process.cwd();
-  console.log(createStatusBar({
-    model: config.model,
-    session: sessionId,
-    workspace
-  }));
-  // Exibe mensagem de comandos ao iniciar o chat
-  console.log(createWelcomeMessage());
+  const messages: ChatMessage[] = session?.messages?.length
+    ? [...session.messages]
+    : [{ role: 'system' as const, content: config.systemPrompt }];
 
-  // Inicializa o histórico
-  const messages = session?.messages?.length ? [...session.messages] : [{ role: 'system', content: config.systemPrompt }];
   const keepAlive = setInterval(() => {}, 1000);
 
   try {
@@ -72,6 +93,10 @@ async function startChat(options: any) {
     clearInterval(keepAlive);
   }
 }
+
+// ============================================================================
+// CLI SETUP
+// ============================================================================
 
 export function setupCLI(): Command {
   const program = new Command();
@@ -86,12 +111,15 @@ export function setupCLI(): Command {
       writeErr: (str) => console.error(colors.error(str)),
     });
 
-  // Check for updates on startup (non-blocking, silent)
+  // Check for updates on startup (non-blocking)
   updateService.checkForUpdates().catch(() => {});
 
-  // Command: chat
+  // ========================================================================
+  // COMMAND: chat
+  // ========================================================================
   program
     .command('chat')
+    .alias('c')
     .description('Start an interactive chat session')
     .option('-s, --session <id>', 'Load a specific session ID')
     .option('-f, --file <path>', 'Attach a file to the conversation')
@@ -102,10 +130,13 @@ export function setupCLI(): Command {
       await startChat(options);
     });
 
-  // Command: ask
+  // ========================================================================
+  // COMMAND: ask
+  // ========================================================================
   program
     .command('ask')
-    .description('Ask a quick question to the AI without starting a chat session')
+    .alias('a')
+    .description('Ask a quick question without starting a chat session')
     .argument('<question>', 'The question to ask')
     .option('--no-stream', 'Disable response streaming')
     .action(async (question, options) => {
@@ -116,53 +147,150 @@ export function setupCLI(): Command {
       await ask.execute(question, options);
     });
 
-  // Command: config
-  const configCmd = program.command('config').description('Manage CLI settings');
+  // ========================================================================
+  // COMMAND: config
+  // ========================================================================
+  const configCmd = program
+    .command('config')
+    .alias('cfg')
+    .description('Manage CLI settings');
 
-  configCmd.command('show').description('Display current configuration').action(async () => {
-    await configManager.init();
-    new ConfigCommand(configManager).execute('show');
-  });
+  configCmd
+    .command('show')
+    .alias('list')
+    .description('Display current configuration')
+    .action(async () => {
+      await configManager.init();
+      new ConfigCommand(configManager).execute('show');
+    });
 
-  configCmd.command('set').description('Update configuration interactively').action(async () => {
-    await configManager.init();
-    new ConfigCommand(configManager).execute('set');
-  });
+  configCmd
+    .command('set')
+    .alias('edit')
+    .description('Update configuration interactively')
+    .action(async () => {
+      await configManager.init();
+      new ConfigCommand(configManager).execute('set');
+    });
 
-  configCmd.command('reset').description('Reset configuration to defaults').action(async () => {
-    await configManager.init();
-    new ConfigCommand(configManager).execute('reset');
-  });
+  configCmd
+    .command('reset')
+    .description('Reset configuration to defaults')
+    .action(async () => {
+      await configManager.init();
+      new ConfigCommand(configManager).execute('reset');
+    });
 
-  // Command: history
-  const historyCmd = program.command('history').description('Manage and view conversation history');
+  configCmd
+    .command('model')
+    .description('Show model information')
+    .action(async () => {
+      await configManager.init();
+      new ConfigCommand(configManager).execute('model');
+    });
 
-  historyCmd.command('list').description('List all previous sessions').action(async () => {
-    const historyManager = await getHistoryManager();
-    new HistoryCommand(historyManager).execute('list');
-  });
+  // ========================================================================
+  // COMMAND: history
+  // ========================================================================
+  const historyCmd = program
+    .command('history')
+    .alias('h')
+    .description('Manage and view conversation history');
 
-  historyCmd.command('show <id>').description('Show details of a specific session').action(async (id) => {
-    const historyManager = await getHistoryManager();
-    new HistoryCommand(historyManager).execute('show', id);
-  });
+  historyCmd
+    .command('list')
+    .alias('ls')
+    .description('List all previous sessions')
+    .action(async () => {
+      const historyManager = await getHistoryManager();
+      new HistoryCommand(historyManager).execute('list');
+    });
 
-  historyCmd.command('clear').description('Remove all session history').option('-f, --force', 'Skip confirmation').action(async (options) => {
-    const historyManager = await getHistoryManager();
-    new ClearCommand(historyManager).execute(options.force);
-  });
+  historyCmd
+    .command('show')
+    .alias('view')
+    .description('Show details of a specific session')
+    .argument('[id]', 'Session ID')
+    .action(async (id) => {
+      const historyManager = await getHistoryManager();
+      new HistoryCommand(historyManager).execute('show', id);
+    });
 
-  // Command: update
+  historyCmd
+    .command('resume')
+    .description('Resume a previous session')
+    .argument('[id]', 'Session ID')
+    .action(async (id) => {
+      const historyManager = await getHistoryManager();
+      new HistoryCommand(historyManager).execute('resume', id);
+    });
+
+  historyCmd
+    .command('delete')
+    .alias('rm')
+    .description('Delete a session')
+    .argument('[id]', 'Session ID')
+    .action(async (id) => {
+      const historyManager = await getHistoryManager();
+      new HistoryCommand(historyManager).execute('delete', id);
+    });
+
+  historyCmd
+    .command('clear')
+    .description('Remove all session history')
+    .option('-f, --force', 'Skip confirmation')
+    .action(async (options) => {
+      const historyManager = await getHistoryManager();
+      new ClearCommand(historyManager).execute(options.force);
+    });
+
+  historyCmd
+    .command('export')
+    .description('Export a session to file')
+    .argument('[id]', 'Session ID')
+    .action(async (id) => {
+      const historyManager = await getHistoryManager();
+      new HistoryCommand(historyManager).execute('export', id);
+    });
+
+  // ========================================================================
+  // COMMAND: models
+  // ========================================================================
+  program
+    .command('models')
+    .alias('m')
+    .description('List all available AI models')
+    .action(async () => {
+      await configManager.init();
+      new ConfigCommand(configManager).execute('model');
+    });
+
+  // ========================================================================
+  // COMMAND: update
+  // ========================================================================
   program
     .command('update')
+    .alias('up')
     .description('Check for and install updates')
-    .argument('[action]', 'Action to perform: check, install, or status', 'check')
+    .argument('[action]', 'Action: check, install, or status', 'check')
     .action(async (action) => {
       const updateCmd = new UpdateCommand();
       await updateCmd.execute(action);
     });
 
+  // ========================================================================
+  // COMMAND: clear (shortcut)
+  // ========================================================================
+  program
+    .command('clear')
+    .description('Clear all conversation history')
+    .option('-f, --force', 'Skip confirmation')
+    .action(async (options) => {
+      const historyManager = await getHistoryManager();
+      new ClearCommand(historyManager).execute(options.force);
+    });
+
   return program;
 }
 
-export { startChat };
+export { startChat, checkSetup };

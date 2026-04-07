@@ -1,5 +1,11 @@
+/**
+ * Modern Clear Command - Simplified
+ * Clean session cleanup with confirmation
+ */
+
+import inquirer from 'inquirer';
 import type { HistoryManager } from '../services/history.service.js';
-import { colors, success, warning } from '../ui/theme.js';
+import { colors } from '../ui/components.js';
 
 export class ClearCommand {
   private historyManager: HistoryManager;
@@ -12,29 +18,29 @@ export class ClearCommand {
     const count = await this.historyManager.getSessionCount();
 
     if (count === 0) {
-      console.log(warning('No sessions to clear.'));
+      console.log(`\n${colors.warning('⚠')} ${colors.yellow('No sessions to clear.')}\n`);
       return;
     }
 
     if (!force) {
-      const { confirm } = await import('inquirer').then(m => 
-        m.default.prompt([
-          {
-            type: 'confirm',
-            name: 'confirm',
-            message: `Are you sure you want to delete ${count} session(s)?`,
-            default: false,
-          },
-        ])
-      );
+      console.log(`\n${colors.warning('⚠')} ${colors.yellow(`This will delete ${count} session(s).`)}\n`);
+      
+      const { confirm } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirm',
+          message: 'Are you sure?',
+          default: false,
+        },
+      ]);
 
       if (!confirm) {
-        console.log(colors.dim('Operation cancelled.'));
+        console.log(`\n${colors.dim('Operation cancelled.')}\n`);
         return;
       }
     }
 
     await this.historyManager.clearAllSessions();
-    console.log(success(`${count} session(s) deleted successfully!`));
+    console.log(`\n${colors.success('✓')} ${colors.green(`${count} session(s) cleared.`)}\n`);
   }
 }

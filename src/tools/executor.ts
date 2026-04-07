@@ -282,6 +282,7 @@ export class ToolExecutor {
 
   private async performRunCommand(fullCommand: string): Promise<string> {
     const isWindows = process.platform === 'win32';
+    const isAndroid = process.platform === 'linux' && !!process.env.TERMUX_VERSION;
     const shell = isWindows ? 'powershell.exe' : undefined;
     
     // Split commands by && to handle them sequentially and persist state (like CD)
@@ -309,6 +310,12 @@ export class ToolExecutor {
         if (isWindows) {
           // PowerShell's mkdir creates parents by default, doesn't need -p
           cmdToRun = cmdToRun.replace(/mkdir -p /g, 'mkdir ');
+          // Map rm -rf to PowerShell equivalent
+          cmdToRun = cmdToRun.replace(/rm -rf /g, 'Remove-Item -Recurse -Force ');
+          // Map touch to PowerShell equivalent
+          cmdToRun = cmdToRun.replace(/touch /g, 'New-Item -ItemType File -Force ');
+          // Cross-platform 'ls' often works in PS, but 'dir' is more native
+          if (cmdToRun === 'ls') cmdToRun = 'dir';
         }
 
         const { stdout, stderr } = await execAsync(cmdToRun, { 
@@ -328,10 +335,37 @@ export class ToolExecutor {
 
   private async ensureBrowser(): Promise<void> {
     if (!this.browser) {
-      this.browser = await puppeteer.launch({ 
-        headless: true, 
-        args: ['--no-sandbox', '--disable-setuid-sandbox'] 
-      });
+      const isAndroid = process.platform === 'linux' && !!process.env.TERMUX_VERSION;
+      const launchOptions: any = {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      };
+
+      // In Termux, try multiple Chromium paths
+      if (isAndroid) {
+        const termuxChromiumPaths = [
+          '/data/data/com.termux/files/usr/bin/chromium-browser',
+          '/data/data/com.termux/files/usr/bin/chromium',
+          '/data/data/com.termux/files/usr/bin/google-chrome',
+        ];
+
+        for (const chromePath of termuxChromiumPaths) {
+          if (await fs.pathExists(chromePath)) {
+            launchOptions.executablePath = chromePath;
+            break;
+          }
+        }
+
+        // If no Chromium found, throw helpful error
+        if (!launchOptions.executablePath) {
+          throw new Error(
+            'Chromium not found. Install it with: pkg install chromium\n' +
+            'Web features (search, fetch, viewer) require Chromium on Termux.'
+          );
+        }
+      }
+
+      this.browser = await puppeteer.launch(launchOptions);
     }
     if (!this.page) {
       const pages = await this.browser.pages();

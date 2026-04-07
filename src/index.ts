@@ -1,18 +1,17 @@
 import 'dotenv/config';
 import { configManager } from './services/config.service.js';
-import { setupCLI, startChat } from './cli/index.js';
+import { setupCLI, startChat, checkSetup } from './cli/index.js';
 import { colors } from './ui/components.js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
 
 export async function main(): Promise<void> {
-// ... (omitted for brevity, will provide full function)
   try {
     // Initialize config first
     await configManager.init();
 
-    // Check if no arguments provided (just 'node dist/index.js')
+    // Check if no arguments provided (just 'luxyie')
     const noArgs = process.argv.length <= 2;
 
     if (noArgs) {
