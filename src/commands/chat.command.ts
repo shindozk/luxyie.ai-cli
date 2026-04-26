@@ -5,7 +5,7 @@
 
 import inquirer from 'inquirer';
 import { configManager } from '../services/config.service.js';
-import { ToolExecutor } from '../tools/executor.js';
+import { ToolExecutor, TOOL_DEFINITIONS } from '../tools/executor.js';
 import { TerminalUI } from '../ui/terminal.js';
 import { ChatMessage } from '../types/index.js';
 import {
@@ -656,10 +656,15 @@ export class ChatCommand {
         this.ui.log(formatAIMessage(intentMessage) + '\n');
       }
 
+      const toolDef = TOOL_DEFINITIONS.find(td => td.function.name === name);
+
       const result = await executeToolCall(
         toolCall as ToolCall,
         this.toolExecutor,
-        { allowedTools: this.allowedTools }
+        { 
+          allowedTools: this.allowedTools,
+          requiresConfirmation: toolDef?.requiresConfirmation ?? false
+        }
       );
 
       const reflectionMessage = this.generateReflectionMessage(name, args, result);
@@ -767,7 +772,7 @@ export class ChatCommand {
       const gitignorePath = path.join(process.cwd(), '.gitignore');
       const hasGitignore = await fs.pathExists(gitignorePath);
       const files = await fs.readdir(process.cwd());
-      const dirs = files.filter(f => {
+      const dirs = files.filter((f: string) => {
         try { return fs.statSync(path.join(process.cwd(), f)).isDirectory(); } catch { return false; }
       });
 

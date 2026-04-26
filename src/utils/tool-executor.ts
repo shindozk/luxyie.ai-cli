@@ -26,6 +26,7 @@ export interface ToolApprovalOptions {
   allowedTools?: Set<string>;
   onApprove?: (name: string) => void;
   onDeny?: (name: string) => void;
+  requiresConfirmation?: boolean;
 }
 
 export type ApprovalAction = 'once' | 'always' | 'deny';
@@ -51,6 +52,12 @@ export async function getToolApproval(
   const { allowedTools = new Set(), onApprove, onDeny } = options;
   const name = toolCall.function.name;
   const args = parseToolArgs(toolCall.function.arguments);
+
+  // If it doesn't require confirmation, auto-approve
+  if (options.requiresConfirmation === false) {
+    onApprove?.(name);
+    return 'once';
+  }
 
   // If already allowed, skip prompt
   if (allowedTools.has(name)) {
