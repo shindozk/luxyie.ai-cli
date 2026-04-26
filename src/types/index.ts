@@ -26,6 +26,7 @@ export interface ToolDefinition {
       required?: string[];
     };
   };
+  requiresConfirmation?: boolean;
 }
 
 export interface ChatCompletionRequest {

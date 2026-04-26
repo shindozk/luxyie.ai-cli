@@ -57,6 +57,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         required: ['path', 'content'],
       },
     },
+    requiresConfirmation: true,
   },
   {
     type: 'function',
@@ -71,6 +72,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         required: ['command'],
       },
     },
+    requiresConfirmation: true,
   },
   {
     type: 'function',
@@ -573,7 +575,7 @@ Elements: ${JSON.stringify(elements, null, 2)}`;
       
       const title = await page.title();
       const currentUrl = page.url();
-      const elements = await page.evaluate((sel) => {
+      const elements = await page.evaluate((sel: string) => {
         // @ts-ignore
         const items = Array.from(document.querySelectorAll(sel));
         return items.slice(0, 15).map(el => {

@@ -35,6 +35,7 @@ yarn-error.log*
 # Testing
 coverage/
 .nyc_output/
+SYSTEM_ANALYSIS.md
 
 # History files (for development)
 *.session.json
