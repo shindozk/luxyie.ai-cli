@@ -11,7 +11,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "test": "jest",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
     "build:bundle": "node scripts/build-bundle.cjs",

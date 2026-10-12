@@ -8,6 +8,8 @@ import { configManager } from '../services/config.service.js';
 import { ToolExecutor, TOOL_DEFINITIONS } from '../tools/executor.js';
 import { TerminalUI } from '../ui/terminal.js';
 import { ChatMessage } from '../types/index.js';
+import type { AgentMode, ContextPin, Session } from '../types/index.js';
+import { AgentService, ContextService } from '../core/index.js';
 import {
   createSessionTimer,
   estimateTokens,
@@ -62,6 +64,8 @@ export class ChatCommand {
   private lastResponse: string = '';
   private sessionTimer: ReturnType<typeof createSessionTimer>;
   private tokenCount: number = 0;
+  private agentService: AgentService;
+  private contextService: ContextService;
 
   constructor(apiClient: any, historyManager: any, config: any) {
     this.apiClient = apiClient;
@@ -70,6 +74,42 @@ export class ChatCommand {
     this.toolExecutor = new ToolExecutor({ config });
     this.ui = new TerminalUI();
     this.sessionTimer = createSessionTimer();
+    this.agentService = new AgentService('code');
+    this.contextService = new ContextService(
+      {
+        maxTokens: Math.max(4000, (config?.maxTokens ?? 16384) * 4),
+        autoCompact: true,
+        compactThreshold: 0.8,
+        preserveSystemPrompt: true,
+        preserveRecentMessages: 12,
+        pinnedFilesMaxSize: 500_000,
+      },
+      {
+        summarizer: {
+          summarize: (messages, maxTokens) => this.summarizeMessages(messages, maxTokens),
+        },
+      },
+    );
+  }
+
+  private async summarizeMessages(messages: ChatMessage[], maxTokens: number): Promise<string> {
+    const transcript = messages
+      .map((message) => `${message.role}: ${typeof message.content === 'string' ? message.content : '[non-text content]'}`)
+      .join('\n');
+
+    const response = await this.apiClient.sendMessage(
+      [
+        {
+          role: 'system',
+          content: `You compress conversation transcripts. Summarise the following transcript in under ${maxTokens} tokens, preserving decisions, file paths, and open tasks.`,
+        },
+        { role: 'user', content: transcript },
+      ],
+      { callbacks: {} },
+      false,
+    );
+
+    return response?.content?.trim() || 'Previous conversation compacted.';
   }
 
   // ============================================================================
@@ -248,6 +288,24 @@ export class ChatCommand {
       case 'tools':
         this.listTools();
         break;
+      case 'agents':
+        this.listAgents();
+        break;
+      case 'agent':
+        this.switchAgent(args.trim());
+        break;
+      case 'pin':
+        await this.pinContext(args.trim());
+        break;
+      case 'unpin':
+        await this.unpinContext(args.trim());
+        break;
+      case 'context':
+        this.showPinnedContext();
+        break;
+      case 'compact':
+        await this.compactConversation(messages);
+        break;
       case 'reset':
         await this.resetConversation(messages);
         break;
@@ -283,6 +341,12 @@ export class ChatCommand {
       { cmd: '/session <id>', desc: 'Switch to a session' },
       { cmd: '/share', desc: 'Export conversation as markdown' },
       { cmd: '/tools', desc: 'List available AI tools' },
+      { cmd: '/agents', desc: 'List agent modes (code, plan, ask, debug, review)' },
+      { cmd: '/agent <mode>', desc: 'Switch the active agent mode' },
+      { cmd: '/pin <path|text>', desc: 'Pin a file or text into the active context' },
+      { cmd: '/unpin <id>', desc: 'Remove a pinned context item' },
+      { cmd: '/context', desc: 'Show the pinned context' },
+      { cmd: '/compact', desc: 'Compact long conversations, keeping recent messages' },
       { cmd: '/reset', desc: 'Reset conversation with system prompt' },
       { cmd: '/about', desc: 'Show version and build info' },
       { cmd: '/theme', desc: 'Cycle through visual themes' },
@@ -501,6 +565,187 @@ export class ChatCommand {
     this.ui.log(`${formatSeparator()}\n`);
   }
 
+  // ============================================================================
+  // AGENT MODES & PINNED CONTEXT
+  // ============================================================================
+
+  private listAgents(): void {
+    const mode = this.agentService.getMode();
+
+    this.ui.log(`\n${colors.bold('🤖 Agent Modes')}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+
+    for (const agent of this.agentService.listAgents()) {
+      const marker = agent.mode === mode ? colors.green('●') : colors.dim('○');
+      const label = agent.mode === mode ? colors.bold(agent.name) : agent.name;
+      this.ui.log(
+        `  ${marker} ${colors.primary(agent.mode.padEnd(8))} ${label} ${colors.dim(`— ${agent.description}`)}\n`,
+      );
+    }
+
+    this.ui.log(`${formatSeparator()}\n`);
+    this.ui.log(formatSystemMessage('Switch with: /agent <code|plan|ask|debug|review>\n'));
+  }
+
+  private switchAgent(target: string): void {
+    if (!target) {
+      this.ui.log(formatSystemMessage(`Current agent: ${this.agentService.getMode()}`));
+      this.ui.log(formatSystemMessage('Usage: /agent <code|plan|ask|debug|review>'));
+      return;
+    }
+
+    try {
+      this.agentService.setMode(target as AgentMode);
+      this.ui.log(formatSystemMessage(`✓ Switched to agent: ${colors.secondary(target)}`));
+      this.ui.log(`  ${colors.dim(this.agentService.getSystemPrompt())}\n`);
+    } catch {
+      this.ui.log(formatErrorMessage(`Unknown agent: ${target}`));
+    }
+  }
+
+  private async pinContext(target: string): Promise<void> {
+    if (!target) {
+      this.ui.log(formatSystemMessage('Usage: /pin <file-path> | /pin text <content>'));
+      return;
+    }
+
+    try {
+      const fs = await import('fs-extra');
+      const pathMod = await import('node:path');
+
+      let pin: ContextPin;
+      if (target.startsWith('text ')) {
+        const content = target.slice(5).trim();
+        pin = await this.contextService.pin({
+          type: 'text',
+          content,
+          label: `text:${content.slice(0, 40)}`,
+          size: Buffer.byteLength(content, 'utf8'),
+        });
+      } else {
+        const resolved = pathMod.resolve(process.cwd(), target);
+        if (!(await fs.pathExists(resolved))) {
+          this.ui.log(formatErrorMessage(`File not found: ${target}`));
+          return;
+        }
+        const stat = await fs.stat(resolved);
+        const content = await fs.readFile(resolved, 'utf8');
+        pin = await this.contextService.pin({
+          type: 'file',
+          path: resolved,
+          content,
+          label: target,
+          size: stat.size,
+        });
+      }
+
+      this.ui.log(formatSystemMessage(`✓ Pinned ${pin.id}: ${colors.secondary(pin.label)}`));
+    } catch (error: any) {
+      this.ui.log(formatErrorMessage(`Failed to pin: ${error.message}`));
+    }
+  }
+
+  private async unpinContext(pinId: string): Promise<void> {
+    if (!pinId) {
+      this.ui.log(formatSystemMessage('Usage: /unpin <pin-id> (see /context)'));
+      return;
+    }
+
+    const removed = await this.contextService.unpin(pinId.trim());
+    if (removed) {
+      this.ui.log(formatSystemMessage(`✓ Unpinned ${pinId}`));
+    } else {
+      this.ui.log(formatErrorMessage(`No pin found with id: ${pinId}`));
+    }
+  }
+
+  private showPinnedContext(): void {
+    const pins = this.contextService.listPins();
+
+    this.ui.log(`\n${colors.bold('📌 Pinned Context')}\n`);
+    this.ui.log(`${formatSeparator()}\n`);
+
+    if (pins.length === 0) {
+      this.ui.log(`  ${colors.dim('Nothing pinned. Use /pin <file-path> to add context.')}\n`);
+    } else {
+      for (const pin of pins) {
+        this.ui.log(
+          `  ${colors.primary(pin.id)} ${colors.bold(pin.label)} ${colors.dim(`(${pin.size} bytes)`)}\n`,
+        );
+      }
+    }
+
+    this.ui.log(`${formatSeparator()}\n`);
+  }
+
+  private async compactConversation(messages: ChatMessage[]): Promise<void> {
+    const session = this.toSession(messages, 'pending');
+
+    if (!this.contextService.shouldCompact(session)) {
+      this.ui.log(formatSystemMessage('Conversation is within limits, nothing to compact.'));
+      return;
+    }
+
+    this.ui.log(formatSystemMessage('🧹 Compacting conversation...'));
+
+    try {
+      const result = await this.contextService.compact(session);
+
+      const summaryMessage: ChatMessage = {
+        role: 'system',
+        content: `[Compacted context]\n${result.summary}`,
+        metadata: { timestamp: result.compactedAt },
+      };
+
+      const systemMessages = messages.filter((m) => m.role === 'system');
+      const nonSystem = messages.filter((m) => m.role !== 'system');
+      const recent = nonSystem.slice(-12);
+
+      messages.length = 0;
+      messages.push(...systemMessages, summaryMessage, ...recent);
+
+      this.ui.log(
+        formatSystemMessage(
+          `✓ Compacted ${result.originalMessages} messages (≈${result.tokensSaved} tokens saved)`,
+        ),
+      );
+    } catch (error: any) {
+      this.ui.log(formatErrorMessage(`Failed to compact: ${error.message}`));
+    }
+  }
+
+  private toSession(messages: ChatMessage[], sessionId: string): Session {
+    return {
+      id: sessionId,
+      title: sessionId,
+      messages,
+      metadata: {
+        model: this.config.model,
+        agentMode: this.agentService.getMode(),
+        contextPins: this.contextService.listPins(),
+        tokenUsage: { total: this.tokenCount, prompt: 0, completion: 0, byModel: {} },
+        settings: {
+          maxTokens: this.config.maxTokens ?? 16384,
+          temperature: this.config.temperature ?? 0.6,
+          topP: this.config.topP ?? 0.95,
+          enableThinking: this.config.enableThinking ?? true,
+          autoCompact: true,
+          compactThreshold: 0.8,
+        },
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
+  private async buildLLMMessages(conversation: ChatMessage[]): Promise<ChatMessage[]> {
+    if (this.contextService.listPins().length === 0) {
+      return conversation;
+    }
+    const session = this.toSession(conversation, 'pending');
+    return this.contextService.buildContext(session);
+  }
+
   private async resetConversation(messages: ChatMessage[]): Promise<void> {
     const { confirm } = await inquirer.prompt([
       {
@@ -535,12 +780,14 @@ export class ChatCommand {
       let assistantContent = '';
       let toolCalls: any[] = [];
 
+      const llmMessages = await this.buildLLMMessages(currentMessages);
+
       if (this.config.streamEnabled) {
-        const result = await this.streamResponse(currentMessages, TOOL_DEFINITIONS);
+        const result = await this.streamResponse(llmMessages, TOOL_DEFINITIONS);
         assistantContent = result.content;
         toolCalls = result.toolCalls;
       } else {
-        const result = await this.nonStreamResponse(currentMessages, TOOL_DEFINITIONS);
+        const result = await this.nonStreamResponse(llmMessages, TOOL_DEFINITIONS);
         assistantContent = result.content;
         toolCalls = result.toolCalls;
 

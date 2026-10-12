@@ -21,6 +21,9 @@ export default {
       },
     ],
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(inquirer|@inquirer|chalk|ansi-escapes|ansi-styles|picocolors|run-async|rxjs|through|chalk-template|cli-width|external-editor|figures|lodash|mute-stream|ora|strip-ansi|wcwidth|wrap-ansi|is-unicode-supported|log-symbols|bl|buffer-from|clone-deep)/)',
+  ],
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
