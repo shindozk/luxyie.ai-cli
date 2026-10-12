@@ -17,7 +17,8 @@
     "build:bundle": "node scripts/build-bundle.cjs",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build && npm run build:bundle",
-    "postinstall": "node scripts/postinstall.cjs"
+    "postinstall": "node scripts/postinstall.cjs",
+    "doctor": "node scripts/doctor.cjs"
   },
   "keywords": [
     "ai",
@@ -46,7 +47,6 @@
     "figlet": "^1.7.0",
     "fs-extra": "^11.2.0",
     "inquirer": "^9.2.12",
-    "llamaindex": "^0.12.1",
     "marked": "^15.0.0",
     "marked-terminal": "^7.3.0",
     "openai": "^6.33.0",
@@ -58,8 +58,7 @@
     "util": "^0.12.5"
   },
   "optionalDependencies": {
-    "puppeteer": "^24.40.0",
-    "llamaindex": "^0.12.1"
+    "puppeteer": "^24.40.0"
   },
   "devDependencies": {
     "@types/figlet": "^1.5.8",

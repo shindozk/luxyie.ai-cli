@@ -95,6 +95,24 @@ function createDitheredBar(
 }
 
 /**
+ * Render the logo image as inline terminal graphics.
+ *
+ * Image protocols (kitty, iTerm, sixel) are unavailable on many terminals -
+ * notably Termux/Android and plain SSH sessions. Any failure falls back to an
+ * empty string so the banner still renders, because this runs at startup.
+ */
+async function renderLogoImage(logoPath: string): Promise<string> {
+  try {
+    return await terminalImage.file(logoPath, { width: 14 });
+  } catch (error) {
+    if (process.env.LUXYIE_DEBUG === '1') {
+      console.warn('Logo rendering skipped:', error instanceof Error ? error.message : error);
+    }
+    return '';
+  }
+}
+
+/**
  * Print header with logo and branding
  */
 export async function printHeaderWithLogo(version: string): Promise<void> {
@@ -108,7 +126,7 @@ export async function printHeaderWithLogo(version: string): Promise<void> {
   let logoString = '';
   for (const logoPath of possiblePaths) {
     if (await fs.pathExists(logoPath)) {
-      logoString = await terminalImage.file(logoPath, { width: 14 });
+      logoString = await renderLogoImage(logoPath);
       break;
     }
   }

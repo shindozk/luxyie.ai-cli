@@ -24,6 +24,21 @@ export {
   type PasteInfo,
 } from './paste-detector.js';
 
+// Platform detection (Termux/Android support)
+export {
+  getBinDir,
+  getPlatformInfo,
+  getPlatformLabel,
+  getTerminalWidth,
+  isAndroid,
+  isTermux,
+  isWindows,
+  resetPlatformCache,
+  supportsUnicode,
+  type PlatformInfo,
+  type PlatformName,
+} from './platform.js';
+
 // Session management
 export {
   createSessionTimer,

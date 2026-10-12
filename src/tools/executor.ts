@@ -1,13 +1,76 @@
 import fs from 'fs-extra';
+import * as fsp from 'node:fs/promises';
 import path from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import type { FileHandle } from 'node:fs/promises';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import puppeteer, { Browser, Page } from 'puppeteer';
+import type { Browser, Page } from 'puppeteer';
 import type { ToolDefinition, Config } from '../types/index.js';
+import { isAndroid, isWindows, getBinDir } from '../utils/platform.js';
 
 const execAsync = promisify(exec);
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+type PuppeteerModule = typeof import('puppeteer');
+
+let puppeteerModule: PuppeteerModule | null = null;
+let puppeteerLoadError: Error | null = null;
+
+/**
+ * Lazily load puppeteer.
+ *
+ * Puppeteer is an optional dependency: its Chromium download is frequently
+ * skipped or unavailable on Android/Termux. Loading it on demand keeps file,
+ * shell, and web-fetch tools working when the browser stack is absent, and
+ * yields a clear error only when a tool actually needs a browser.
+ */
+async function loadPuppeteer(): Promise<PuppeteerModule> {
+  if (puppeteerModule) {
+    return puppeteerModule;
+  }
+  if (puppeteerLoadError) {
+    throw puppeteerLoadError;
+  }
+
+  try {
+    const loaded = (await import('puppeteer')) as PuppeteerModule & { default?: PuppeteerModule };
+    puppeteerModule = (loaded.default ?? loaded) as PuppeteerModule;
+    return puppeteerModule;
+  } catch (error) {
+    puppeteerLoadError =
+      error instanceof Error
+        ? error
+        : new Error('Puppeteer is not installed. Install it with: npm install puppeteer');
+    throw puppeteerLoadError;
+  }
+}
+
+function findChromiumBinary(): string | null {
+  if (!isAndroid()) {
+    return null;
+  }
+
+  const candidates = [
+    process.env.CHROMIUM_PATH,
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    `${process.env.PREFIX ?? ''}/bin/chromium-browser`,
+    `${process.env.PREFIX ?? ''}/bin/chromium`,
+    '/data/data/com.termux/files/usr/bin/chromium-browser',
+    '/data/data/com.termux/files/usr/bin/chromium',
+    '/data/data/com.termux/files/usr/bin/google-chrome',
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 interface ToolExecutorOptions {
   workingDirectory?: string;
@@ -283,9 +346,17 @@ export class ToolExecutor {
   }
 
   private async performRunCommand(fullCommand: string): Promise<string> {
-    const isWindows = process.platform === 'win32';
-    const isAndroid = process.platform === 'linux' && !!process.env.TERMUX_VERSION;
-    const shell = isWindows ? 'powershell.exe' : undefined;
+    const windows = isWindows();
+    const android = isAndroid();
+    // Termux ships bash at $PREFIX/bin/bash; falling back to the system shell
+    // keeps pipes, globbing, and && working when bash is not installed.
+    const termuxBash = android ? `${getBinDir()}/bash` : null;
+    const shell =
+      windows
+        ? 'powershell.exe'
+        : termuxBash && fs.existsSync(termuxBash)
+          ? termuxBash
+          : undefined;
     
     // Split commands by && to handle them sequentially and persist state (like CD)
     const commands = fullCommand.split('&&').map(c => c.trim());
@@ -309,7 +380,7 @@ export class ToolExecutor {
       try {
         let cmdToRun = cmd;
         // Fix common Linux-isms for Windows PowerShell
-        if (isWindows) {
+        if (windows) {
           // PowerShell's mkdir creates parents by default, doesn't need -p
           cmdToRun = cmdToRun.replace(/mkdir -p /g, 'mkdir ');
           // Map rm -rf to PowerShell equivalent
@@ -335,38 +406,45 @@ export class ToolExecutor {
     return combinedOutput.trim() || 'Command executed successfully with no output.';
   }
 
+  /**
+   * Load the browser engine, translating an absent dependency into a message
+   * that names the right command for the current platform.
+   */
+  private async loadBrowserEngine(): Promise<PuppeteerModule> {
+    try {
+      return await loadPuppeteer();
+    } catch {
+      if (isAndroid()) {
+        throw new Error(
+          'Browser engine unavailable. Enable web tools with:\n' +
+            '  PUPPETEER_SKIP_DOWNLOAD=1 npm install puppeteer\n' +
+            '  pkg install chromium',
+        );
+      }
+      throw new Error('Browser engine unavailable. Install it with: npm install puppeteer');
+    }
+  }
+
   private async ensureBrowser(): Promise<void> {
     if (!this.browser) {
-      const isAndroid = process.platform === 'linux' && !!process.env.TERMUX_VERSION;
       const launchOptions: any = {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
       };
 
-      // In Termux, try multiple Chromium paths
-      if (isAndroid) {
-        const termuxChromiumPaths = [
-          '/data/data/com.termux/files/usr/bin/chromium-browser',
-          '/data/data/com.termux/files/usr/bin/chromium',
-          '/data/data/com.termux/files/usr/bin/google-chrome',
-        ];
-
-        for (const chromePath of termuxChromiumPaths) {
-          if (await fs.pathExists(chromePath)) {
-            launchOptions.executablePath = chromePath;
-            break;
-          }
-        }
-
-        // If no Chromium found, throw helpful error
-        if (!launchOptions.executablePath) {
-          throw new Error(
-            'Chromium not found. Install it with: pkg install chromium\n' +
-            'Web features (search, fetch, viewer) require Chromium on Termux.'
-          );
-        }
+      // On Android/Termux there is no bundled Chromium, so point puppeteer at
+      // the system package (pkg install chromium).
+      const chromiumPath = findChromiumBinary();
+      if (chromiumPath) {
+        launchOptions.executablePath = chromiumPath;
+      } else if (isAndroid()) {
+        throw new Error(
+          'Chromium not found. Install it with: pkg install chromium\n' +
+            'Web features (search, fetch, viewer) require Chromium on Termux.',
+        );
       }
 
+      const puppeteer = await this.loadBrowserEngine();
       this.browser = await puppeteer.launch(launchOptions);
     }
     if (!this.page) {
@@ -712,6 +790,13 @@ ${reasoning}`;
   }
 
   private async getImageDimensions(filePath: string): Promise<{ width: number; height: number } | null> {
+    // Prefer parsing the file header directly: Termux (and most mobile
+    // environments) do not ship the `file` utility, and this avoids a shell-out.
+    const fromHeader = await this.readImageHeaderDimensions(filePath);
+    if (fromHeader) {
+      return fromHeader;
+    }
+
     try {
       const { stdout } = await execAsync(`file "${filePath}"`);
       const match = stdout.match(/(\d+) x (\d+)/);
@@ -722,6 +807,67 @@ ${reasoning}`;
     } catch (error: any) {
       console.error(`Get Image Dimensions Error: ${error.message}`);
       return null;
+    }
+  }
+
+  /**
+   * Read width/height straight from PNG, GIF, BMP, and WebP headers.
+   * Returns null for formats that need heavier decoding (e.g. JPEG).
+   */
+  private async readImageHeaderDimensions(
+    filePath: string,
+  ): Promise<{ width: number; height: number } | null> {
+    let handle: FileHandle | null = null;
+    try {
+      handle = await fsp.open(filePath, 'r');
+      const header = Buffer.alloc(32);
+      const { bytesRead } = await handle.read(header, 0, 32, 0);
+      if (bytesRead < 16) {
+        return null;
+      }
+
+      // PNG: 8-byte signature then IHDR width/height as big-endian uint32.
+      if (header.subarray(0, 8).equals(PNG_SIGNATURE)) {
+        return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
+      }
+
+      // BMP: "BM" then a little-endian uint32 width/height at offsets 18/22.
+      if (header.subarray(0, 2).toString('ascii') === 'BM') {
+        return { width: header.readUInt32LE(18), height: header.readUInt32LE(22) };
+      }
+
+      // GIF: "GIF87a" or "GIF89a" then little-endian uint16 width/height.
+      if (header.subarray(0, 3).toString('ascii') === 'GIF') {
+        return { width: header.readUInt16LE(6), height: header.readUInt16LE(8) };
+      }
+
+      // WebP: RIFF....WEBP followed by a VP8/VP8L/VP8X chunk.
+      if (
+        header.subarray(0, 4).toString('ascii') === 'RIFF' &&
+        header.subarray(8, 12).toString('ascii') === 'WEBP'
+      ) {
+        const chunk = header.subarray(12, 16).toString('ascii');
+        if (chunk === 'VP8X') {
+          const b = (offset: number): number => header[offset] ?? 0;
+          return {
+            width: 1 + (b(24) | (b(25) << 8) | (b(26) << 16)),
+            height: 1 + (b(27) | (b(28) << 8) | (b(29) << 16)),
+          };
+        }
+        if (chunk === 'VP8L') {
+          const bits = header.readUInt32LE(21);
+          return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+        }
+        if (chunk === 'VP8 ') {
+          return { width: header.readUInt16LE(26) & 0x3fff, height: header.readUInt16LE(28) & 0x3fff };
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    } finally {
+      await handle?.close();
     }
   }
 

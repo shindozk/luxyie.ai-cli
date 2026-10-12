@@ -13,7 +13,7 @@
 [![Version](https://img.shields.io/badge/version-1.7.5-8B5CF6?style=for-the-badge)](https://github.com/shindozk/luxyie.ai-cli/releases)
 [![Node](https://img.shields.io/badge/node-20%2B-10B981?style=for-the-badge&logo=node.js)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-6366F1?style=for-the-badge)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-40%20passing-10B981?style=for-the-badge)](https://github.com/shindozk/luxyie.ai-cli/actions)
+[![Tests](https://img.shields.io/badge/tests-92%20passing-10B981?style=for-the-badge)](https://github.com/shindozk/luxyie.ai-cli/actions)
 
 Luxyie CLI brings the power of advanced AI models directly into your terminal — whether you're coding, researching, writing, or automating tasks. Think of it as your personal AI pair programmer, researcher, and assistant — always ready, always fast.
 
@@ -114,6 +114,31 @@ npm install -g luxyie.ai-cli
 luxyie --version
 ```
 
+### Environment Doctor
+
+Run this after installing to see exactly what is available and what to add:
+
+```bash
+npm run doctor -g luxyie.ai-cli 2>/dev/null || \
+  node /data/data/com.termux/files/usr/lib/node_modules/luxyie.ai-cli/scripts/doctor.cjs
+```
+
+It reports Node.js version, puppeteer/Chromium status, the clipboard bridge, shared
+storage access, and bundle permissions — then prints the commands needed to fix
+anything missing.
+
+> **Skip the Chromium download** if you do not need browser automation, it saves
+> roughly 150 MB and several minutes on mobile:
+>
+> ```bash
+> PUPPETEER_SKIP_DOWNLOAD=1 npm install -g luxyie.ai-cli
+> ```
+>
+> Browser automation is an *optional* dependency and is loaded on demand, so
+> skipping it never affects chat, file tools, or command execution — only
+> `web_search`, `web_fetch`, and `web_viewer`, which report a clear install hint
+> instead of failing.
+
 ### Troubleshooting
 
 **Permission errors?**
@@ -132,15 +157,33 @@ pkg install chromium
 termux-setup-storage
 ```
 
+**`/copy` does nothing?**
+```bash
+pkg install termux-api   # Termux has no xsel/xclip/wl-copy
+```
+
+**Image dimensions missing?**
+```bash
+pkg install file         # Optional: PNG/GIF/BMP/WebP are read natively
+```
+
+**Logo looks broken or missing?**
+This is expected — image protocols (kitty/iTerm/sixel) are unavailable on
+Termux. The banner falls back to the text logo automatically.
+
 ### Termux Feature Support
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Chat & Ask | ✅ Full | No limitations |
+| Agent modes (`/agent`, `/agents`) | ✅ Full | Includes code, plan, ask, debug, review |
+| Pinned context (`/pin`, `/context`) | ✅ Full | Persists for the session |
+| Compaction (`/compact`) | ✅ Full | Preserves recent messages |
 | File operations | ✅ Full | Use `termux-setup-storage` |
-| Command execution | ✅ Full | Termux-compatible commands |
+| Command execution | ✅ Full | Uses `$PREFIX/bin/bash` when available |
 | Web search/fetch | ⚠️ Requires Chromium | `pkg install chromium` |
 | Image analysis | ✅ Full | Via Kimi-k2.5 |
+| `/copy` to clipboard | ⚠️ Requires termux-api | `pkg install termux-api` |
 
 See [docs/TERMUX-GUIDE.md](docs/TERMUX-GUIDE.md) for complete documentation.
 

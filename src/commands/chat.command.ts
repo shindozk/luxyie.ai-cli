@@ -4,12 +4,16 @@
  */
 
 import inquirer from 'inquirer';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { configManager } from '../services/config.service.js';
 import { ToolExecutor, TOOL_DEFINITIONS } from '../tools/executor.js';
 import { TerminalUI } from '../ui/terminal.js';
 import { ChatMessage } from '../types/index.js';
 import type { AgentMode, ContextPin, Session } from '../types/index.js';
 import { AgentService, ContextService } from '../core/index.js';
+import { getBinDir, getPlatformLabel, isTermux } from '../utils/platform.js';
 import {
   createSessionTimer,
   estimateTokens,
@@ -374,9 +378,30 @@ export class ChatCommand {
       const clipboardy = require('clipboardy');
       clipboardy.writeSync(this.lastResponse);
       this.ui.log(formatSystemMessage('✓ Last response copied to clipboard'));
+      return;
     } catch {
-      this.ui.log(formatSystemMessage(`Clipboard not available. Response: ${this.lastResponse.length} chars`));
+      // clipboardy relies on xsel/xclip/wl-copy which are absent on Termux
     }
+
+    // On Termux the clipboard lives in the termux-api package.
+    try {
+      const termuxClipboard = path.join(getBinDir(), 'termux-clipboard-set');
+      if (isTermux() && fs.existsSync(termuxClipboard)) {
+        execFileSync(termuxClipboard, [], { input: this.lastResponse });
+        this.ui.log(formatSystemMessage('✓ Last response copied to clipboard'));
+        return;
+      }
+    } catch {
+      // fall through to the manual hint below
+    }
+
+    this.ui.log(
+      formatSystemMessage(
+        isTermux()
+          ? `Clipboard unavailable. Install termux-api: pkg install termux-api. Response: ${this.lastResponse.length} chars`
+          : `Clipboard not available. Response: ${this.lastResponse.length} chars`,
+      ),
+    );
   }
 
   private async showSettings(): Promise<void> {
@@ -986,7 +1011,7 @@ export class ChatCommand {
     this.ui.log(`${formatSeparator()}\n`);
     this.ui.log(`  ${colors.dim('Version:')} ${colors.secondary('1.7.5')}\n`);
     this.ui.log(`  ${colors.dim('Node.js:')} ${colors.white(process.version)}\n`);
-    this.ui.log(`  ${colors.dim('Platform:')} ${colors.white(process.platform)} ${colors.white(process.arch)}\n`);
+    this.ui.log(`  ${colors.dim('Platform:')} ${colors.white(getPlatformLabel())}\n`);
     this.ui.log(`  ${colors.dim('Repository:')} ${colors.accent.underline('https://github.com/shindozk/luxyie.ai-cli')}\n`);
     this.ui.log(`${formatSeparator()}\n`);
   }

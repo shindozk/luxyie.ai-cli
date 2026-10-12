@@ -5,6 +5,17 @@ const outfile = path.resolve(__dirname, '../bundle/luxyie.cjs');
 
 const pkg = require('../package.json');
 
+// Browser automation is optional (no Chromium on Android/Termux), so it stays
+// external and is loaded lazily at runtime instead of being bundled.
+const external = [
+  'node:fs',
+  'node:path',
+  'node:child_process',
+  'cfonts',
+  'puppeteer',
+  'puppeteer-core',
+];
+
 esbuild
   .build({
     entryPoints: ['dist/index.js'],
@@ -12,12 +23,7 @@ esbuild
     platform: 'node',
     format: 'cjs',
     outfile: outfile,
-    external: [
-      'node:fs',
-      'node:path',
-      'node:child_process',
-      'cfonts',
-    ],
+    external,
     minify: true,
     sourcemap: false,
     banner: {
